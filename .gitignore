@@ -2,3 +2,5 @@
 .kotlin
 build
 node_modules
+.vscode
+.idea

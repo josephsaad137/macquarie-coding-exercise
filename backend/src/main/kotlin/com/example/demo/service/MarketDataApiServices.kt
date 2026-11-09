@@ -1,0 +1,57 @@
+package com.example.demo.service
+
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.util.UUID
+
+interface AnalyticsApiService {
+    fun dailyBars(contract: String?, from: LocalDate, to: LocalDate): List<DailyBar>
+
+    fun rollingVwap(contract: String?, from: LocalDate, to: LocalDate): List<RollingVwapPoint>
+}
+
+interface QualityApiService {
+    fun getQuality(datasetId: UUID, page: Int, size: Int): QualityReport
+}
+
+interface InsightsApiService {
+    fun getInsights(datasetId: UUID): List<Insight>
+}
+
+data class QualityReport(
+    val datasetId: UUID,
+    val totalIssues: Long,
+    val issues: List<QualityIssue>,
+)
+
+data class QualityIssue(
+    val rowNumber: Long,
+    val contract: String?,
+    val timestamp: LocalDateTime?,
+    val code: String,
+    val message: String,
+)
+
+data class DailyBar(
+    val contract: String,
+    val date: LocalDate,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+    val volume: Long,
+)
+
+data class RollingVwapPoint(
+    val contract: String,
+    val timestamp: LocalDateTime,
+    val value: Double,
+)
+
+data class Insight(
+    val code: String,
+    val title: String,
+    val description: String,
+    val recommendation: String,
+    val evidence: List<String> = emptyList(),
+)
