@@ -2,8 +2,6 @@ package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
 import com.example.demo.service.model.DatasetFrequency
-import java.nio.file.Files
-import java.nio.file.Path
 import org.junit.jupiter.api.Test
 import org.springframework.web.server.ResponseStatusException
 import kotlin.test.assertEquals
@@ -211,21 +209,10 @@ class DatasetServiceTest {
 
     @Test
     fun `imports sample Parquet dataset`() {
-        val path = Path.of(
-            "..",
-            "historical-futures-data-sample",
-            "data",
-            "daily",
-            "CME",
-            "ES",
-            "ESH25.parquet",
-        )
-        assertTrue(Files.exists(path), "Expected sample Parquet file at $path")
-
         val imported = service.importDataset(
-            path.fileName.toString(),
+            "ESH25-daily.parquet",
             "parquet",
-            Files.readAllBytes(path),
+            readSample("ESH25-daily.parquet"),
             DatasetFrequency.DAILY,
         )
 
@@ -238,21 +225,10 @@ class DatasetServiceTest {
 
     @Test
     fun `imports sample minute Parquet dataset using Chicago wall timestamps`() {
-        val path = Path.of(
-            "..",
-            "historical-futures-data-sample",
-            "data",
-            "minute",
-            "CME",
-            "ES",
-            "ESH25.parquet",
-        )
-        assertTrue(Files.exists(path), "Expected sample Parquet file at $path")
-
         val imported = service.importDataset(
-            path.fileName.toString(),
+            "ESH25-minute.parquet",
             "parquet",
-            Files.readAllBytes(path),
+            readSample("ESH25-minute.parquet"),
             DatasetFrequency.MINUTE,
         )
 
@@ -261,4 +237,8 @@ class DatasetServiceTest {
         assertEquals(0, imported.rowsRejected)
         assertTrue(service.qualityIssues(imported.id).any { it.code == "MISSING_TIMESTAMP" })
     }
+
+    private fun readSample(filename: String): ByteArray =
+        javaClass.getResourceAsStream("/sample-data/$filename")?.use { it.readBytes() }
+            ?: error("Missing test fixture: sample-data/$filename")
 }

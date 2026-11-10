@@ -201,7 +201,28 @@ class DatasetService(
                 fun inspect(record: GenericRecord) {
                     rowNumber++
                     val values = columns.mapValues { (_, index) ->
-                        record.get(headers[index])?.toString()?.trim().orEmpty()
+                        val fieldName = headers[index]
+                        val value = record.get(fieldName) ?: return@mapValues ""
+                        val logicalType = record.schema.getField(fieldName).schema().logicalType?.name
+                        val nanosPerUnit = when {
+                            logicalType == "timestamp-micros" || logicalType == "local-timestamp-micros" -> 1_000L
+                            logicalType == "timestamp-nanos" || logicalType == "local-timestamp-nanos" -> 1L
+                            // This naive Chicago wall-clock field is stored as epoch nanoseconds.
+                            normalizeHeader(fieldName) == "timestampchicagowall" -> 1L
+                            else -> null
+                        }
+                        if (nanosPerUnit != null) {
+                            value.toString().toLongOrNull()?.let { timestampUnits ->
+                                val unitsPerSecond = 1_000_000_000L / nanosPerUnit
+                                LocalDateTime.ofEpochSecond(
+                                    Math.floorDiv(timestampUnits, unitsPerSecond),
+                                    (Math.floorMod(timestampUnits, unitsPerSecond) * nanosPerUnit).toInt(),
+                                    ZoneOffset.UTC,
+                                ).toString()
+                            } ?: value.toString().trim()
+                        } else {
+                            value.toString().trim()
+                        }
                     }
                     when (val parsed = parseBar(values)) {
                         is BarParseResult.Invalid -> {
