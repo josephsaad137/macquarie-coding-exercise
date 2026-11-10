@@ -95,8 +95,6 @@ class DatasetService(
 
     fun listDatasets(): List<DatasetSummary> = datasetRepository.findAllDatasets()
 
-    fun allMarketData(): List<MarketDataBar> = datasetRepository.findAllMarketData()
-
     fun findDataset(datasetId: UUID): DatasetSummary? = datasetRepository.findDataset(datasetId)
 
     fun qualityIssues(datasetId: UUID): List<QualityIssue> = datasetRepository.findQualityIssues(datasetId)
@@ -140,7 +138,7 @@ class DatasetService(
         val headers = records.asSequence().firstOrNull { row -> row.any(String::isNotBlank) }
             ?: throw badRequest("The CSV file does not contain a header")
         val columns = resolveColumns(headers)
-        val seenBars = hashSetOf<BarKey>()
+        val seenBars = linkedMapOf<BarKey, MarketDataBar>()
         val imported = mutableListOf<MarketDataBar>()
         val issues = mutableListOf<QualityIssue>()
         var rowsRejected = 0
@@ -169,17 +167,13 @@ class DatasetService(
                     issues.add(qualityIssue(rowNumber, values, parsed.code, parsed.message))
                 }
                 is BarParseResult.Valid -> {
-                    if (!seenBars.add(BarKey(parsed.bar.contract, parsed.bar.timestamp))) {
+                    val key = BarKey(parsed.bar.contract, parsed.bar.timestamp)
+                    val existingBar = seenBars[key]
+                    if (existingBar != null) {
                         rowsRejected++
-                        issues.add(
-                            qualityIssue(
-                                rowNumber,
-                                values,
-                                "DUPLICATE_BAR",
-                                "A bar already exists for this contract and timestamp",
-                            ),
-                        )
+                        issues.add(duplicateIssue(rowNumber, values, existingBar, parsed.bar))
                     } else {
+                        seenBars[key] = parsed.bar
                         imported.add(parsed.bar)
                     }
                 }
@@ -198,7 +192,7 @@ class DatasetService(
                 val firstRecord = parquetReader.read() ?: return ImportedRows(emptyList(), emptyList(), 0)
                 val headers = firstRecord.schema.fields.map { it.name() }
                 val columns = resolveColumns(headers)
-                val seenBars = hashSetOf<BarKey>()
+                val seenBars = linkedMapOf<BarKey, MarketDataBar>()
                 val imported = mutableListOf<MarketDataBar>()
                 val issues = mutableListOf<QualityIssue>()
                 var rowsRejected = 0
@@ -215,17 +209,13 @@ class DatasetService(
                             issues.add(qualityIssue(rowNumber, values, parsed.code, parsed.message))
                         }
                         is BarParseResult.Valid -> {
-                            if (!seenBars.add(BarKey(parsed.bar.contract, parsed.bar.timestamp))) {
+                            val key = BarKey(parsed.bar.contract, parsed.bar.timestamp)
+                            val existingBar = seenBars[key]
+                            if (existingBar != null) {
                                 rowsRejected++
-                                issues.add(
-                                    qualityIssue(
-                                        rowNumber,
-                                        values,
-                                        "DUPLICATE_BAR",
-                                        "A bar already exists for this contract and timestamp",
-                                    ),
-                                )
+                                issues.add(duplicateIssue(rowNumber, values, existingBar, parsed.bar))
                             } else {
+                                seenBars[key] = parsed.bar
                                 imported.add(parsed.bar)
                             }
                         }
@@ -293,6 +283,25 @@ class DatasetService(
         code = code,
         message = message,
     )
+
+    private fun duplicateIssue(
+        rowNumber: Long,
+        values: Map<String, String>,
+        existing: MarketDataBar,
+        incoming: MarketDataBar,
+    ): QualityIssue {
+        val isExactDuplicate = existing == incoming
+        return qualityIssue(
+            rowNumber = rowNumber,
+            values = values,
+            code = if (isExactDuplicate) "DUPLICATE_BAR" else "CONFLICTING_BAR",
+            message = if (isExactDuplicate) {
+                "An identical bar already exists for this contract and timestamp"
+            } else {
+                "A different bar already exists for this contract and timestamp"
+            },
+        )
+    }
 
     private fun parseTimestamp(value: String): LocalDateTime? {
         val normalized = value.trim()

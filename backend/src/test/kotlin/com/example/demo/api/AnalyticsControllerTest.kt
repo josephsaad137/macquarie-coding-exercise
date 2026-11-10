@@ -1,6 +1,7 @@
 package com.example.demo.api
 
 import com.example.demo.service.AnalyticsService
+import com.example.demo.service.model.AnalyticsPage
 import com.example.demo.service.model.DailyBar
 import com.example.demo.service.model.RollingVwapPoint
 import java.time.LocalDate
@@ -38,9 +39,15 @@ class AnalyticsControllerTest {
                 "ESH25",
                 LocalDate.parse("2025-01-02"),
                 LocalDate.parse("2025-01-03"),
+                0,
+                100,
             ),
         ).thenReturn(
-            listOf(
+            AnalyticsPage(
+                totalElements = 1,
+                page = 0,
+                size = 100,
+                items = listOf(
                 DailyBar(
                     contract = "ESH25",
                     date = LocalDate.parse("2025-01-02"),
@@ -49,6 +56,7 @@ class AnalyticsControllerTest {
                     low = 98.0,
                     close = 103.0,
                     volume = 42L,
+                ),
                 ),
             ),
         )
@@ -63,7 +71,7 @@ class AnalyticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(
                 content().json(
-                    """[{"contract":"ESH25","date":"2025-01-02","open":100.0,"high":105.0,"low":98.0,"close":103.0,"volume":42}]""",
+                    """{"totalElements":1,"page":0,"size":100,"items":[{"contract":"ESH25","date":"2025-01-02","open":100.0,"high":105.0,"low":98.0,"close":103.0,"volume":42}]}""",
                 ),
             )
 
@@ -72,6 +80,8 @@ class AnalyticsControllerTest {
             "ESH25",
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-03"),
+            0,
+            100,
         )
     }
 
@@ -85,7 +95,7 @@ class AnalyticsControllerTest {
         )
             .andExpect(status().isBadRequest)
 
-        verify(analyticsService, never()).dailyBars(any(), any(), any(), any())
+        verify(analyticsService, never()).dailyBars(any(), any(), any(), any(), any(), any())
     }
 
     @Test
@@ -98,7 +108,7 @@ class AnalyticsControllerTest {
         )
             .andExpect(status().isBadRequest)
 
-        verify(analyticsService, never()).dailyBars(any(), any(), any(), any())
+        verify(analyticsService, never()).dailyBars(any(), any(), any(), any(), any(), any())
     }
 
     @Test
@@ -115,8 +125,16 @@ class AnalyticsControllerTest {
                 .param("to", "2025-01-03"),
         ).andExpect(status().isBadRequest)
 
-        verify(analyticsService, never()).dailyBars(any(), any(), any(), any())
-        verify(analyticsService, never()).rollingVwap(any(), any(), any(), any())
+        mockMvc.perform(
+            get("/analytics/daily-bars")
+                .param("datasetId", datasetId.toString())
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-03")
+                .param("page", "-1"),
+        ).andExpect(status().isBadRequest)
+
+        verify(analyticsService, never()).dailyBars(any(), any(), any(), any(), any(), any())
+        verify(analyticsService, never()).rollingVwap(any(), any(), any(), any(), any(), any())
     }
 
     @Test
@@ -127,13 +145,20 @@ class AnalyticsControllerTest {
                 eq(null),
                 eq(LocalDate.parse("2025-01-02")),
                 eq(LocalDate.parse("2025-01-02")),
+                eq(0),
+                eq(100),
             ),
         ).thenReturn(
-            listOf(
+            AnalyticsPage(
+                totalElements = 1,
+                page = 0,
+                size = 100,
+                items = listOf(
                 RollingVwapPoint(
                     contract = "ESH25",
                     timestamp = LocalDateTime.parse("2025-01-02T09:45:00"),
                     value = 101.25,
+                ),
                 ),
             ),
         )
@@ -147,7 +172,7 @@ class AnalyticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(
                 content().json(
-                    """[{"contract":"ESH25","timestamp":"2025-01-02T09:45:00","value":101.25}]""",
+                    """{"totalElements":1,"page":0,"size":100,"items":[{"contract":"ESH25","timestamp":"2025-01-02T09:45:00","value":101.25}]}""",
                 ),
             )
 
@@ -156,6 +181,51 @@ class AnalyticsControllerTest {
             null,
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-02"),
+            0,
+            100,
         )
+    }
+
+    @Test
+    fun `paginates analytics results and enforces size bounds`() {
+        whenever(
+            analyticsService.dailyBars(
+                datasetId,
+                null,
+                LocalDate.parse("2025-01-02"),
+                LocalDate.parse("2025-01-03"),
+                1,
+                20,
+            ),
+        ).thenReturn(AnalyticsPage(totalElements = 0, page = 1, size = 20, items = emptyList()))
+
+        mockMvc.perform(
+            get("/analytics/daily-bars")
+                .param("datasetId", datasetId.toString())
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-03")
+                .param("page", "1")
+                .param("size", "20"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(content().json("""{"totalElements":0,"page":1,"size":20,"items":[]}"""))
+
+        mockMvc.perform(
+            get("/analytics/vwap")
+                .param("datasetId", datasetId.toString())
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-03")
+                .param("size", "501"),
+        ).andExpect(status().isBadRequest)
+
+        verify(analyticsService).dailyBars(
+            datasetId,
+            null,
+            LocalDate.parse("2025-01-02"),
+            LocalDate.parse("2025-01-03"),
+            1,
+            20,
+        )
+        verify(analyticsService, never()).rollingVwap(any(), any(), any(), any(), any(), any())
     }
 }

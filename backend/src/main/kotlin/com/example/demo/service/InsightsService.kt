@@ -49,6 +49,7 @@ class InsightsService(
     ): Insight {
         val guidance = when (code) {
             "DUPLICATE_BAR" -> "Deduplicate records by contract and timestamp before ingestion."
+            "CONFLICTING_BAR" -> "Resolve conflicting values for each contract and timestamp using the authoritative source record."
             "INVALID_OHLC" -> "Validate that high is at least open, close, and low, and low is at most open, close, and high."
             "INVALID_VOLUME" -> "Require volume to be a non-negative integer before publishing the file."
             "MISSING_TIMESTAMP" -> "Restore missing bars or verify that the ${frequency.name.lowercase()} dataset has complete timestamp coverage."
@@ -56,6 +57,7 @@ class InsightsService(
         }
         val title = when (code) {
             "DUPLICATE_BAR" -> "Recurring duplicate bars"
+            "CONFLICTING_BAR" -> "Conflicting bars"
             "INVALID_OHLC" -> "Recurring invalid OHLC values"
             "INVALID_VOLUME" -> "Recurring invalid volumes"
             "MISSING_TIMESTAMP" -> "Recurring timestamp gaps"

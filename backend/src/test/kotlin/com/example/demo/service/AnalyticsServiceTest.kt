@@ -31,7 +31,7 @@ class AnalyticsServiceTest {
                 DailyBar("ESH25", LocalDate.parse("2025-01-02"), 100.0, 105.0, 99.0, 104.0, 60),
                 DailyBar("ESH25", LocalDate.parse("2025-01-03"), 104.0, 106.0, 103.0, 105.0, 12),
             ),
-            analytics.dailyBars(datasetId, "ESH25", LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-03")),
+            analytics.dailyBars(datasetId, "ESH25", LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-03"), page = 0, size = 10).items,
         )
     }
 
@@ -49,7 +49,7 @@ class AnalyticsServiceTest {
 
         assertEquals(
             listOf(DailyBar("ESH25", LocalDate.parse("2025-01-02"), 101.0, 103.0, 100.0, 102.0, 20)),
-            analytics.dailyBars(datasetId, " esh25 ", LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02")),
+            analytics.dailyBars(datasetId, " esh25 ", LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), page = 0, size = 10).items,
         )
     }
 
@@ -69,15 +69,17 @@ class AnalyticsServiceTest {
             "ESH25",
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-02"),
+            page = 0,
+            size = 10,
         )
 
-        assertEquals(3, points.size)
-        assertEquals("ESH25", points[0].contract)
-        assertEquals(LocalDateTime.parse("2025-01-02T09:30:00"), points[0].timestamp)
-        assertClose(100.6666666667, points[0].value)
-        assertClose((100.6666666667 * 10 + 103.0 * 30) / 40, points[1].value)
-        assertEquals(LocalDateTime.parse("2025-01-02T09:45:00"), points[2].timestamp)
-        assertClose((103.0 * 30 + 106.0 * 10) / 40, points[2].value)
+        assertEquals(3, points.items.size)
+        assertEquals("ESH25", points.items[0].contract)
+        assertEquals(LocalDateTime.parse("2025-01-02T09:30:00"), points.items[0].timestamp)
+        assertClose(100.6666666667, points.items[0].value)
+        assertClose((100.6666666667 * 10 + 103.0 * 30) / 40, points.items[1].value)
+        assertEquals(LocalDateTime.parse("2025-01-02T09:45:00"), points.items[2].timestamp)
+        assertClose((103.0 * 30 + 106.0 * 10) / 40, points.items[2].value)
     }
 
     @Test
@@ -96,11 +98,13 @@ class AnalyticsServiceTest {
             "ESH25",
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-02"),
+            page = 0,
+            size = 10,
         )
 
-        assertEquals(1, points.size)
-        assertEquals(LocalDateTime.parse("2025-01-02T00:00:00"), points.single().timestamp)
-        assertClose(100.6666666667, points.single().value)
+        assertEquals(1, points.items.size)
+        assertEquals(LocalDateTime.parse("2025-01-02T00:00:00"), points.items.single().timestamp)
+        assertClose(100.6666666667, points.items.single().value)
     }
 
     @Test
@@ -110,10 +114,10 @@ class AnalyticsServiceTest {
         )
 
         assertTrue(
-            analytics.dailyBars(datasetId, "NQH25", LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03")).isEmpty(),
+            analytics.dailyBars(datasetId, "NQH25", LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03"), 0, 10).items.isEmpty(),
         )
         assertTrue(
-            analytics.rollingVwap(datasetId, "NQH25", LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03")).isEmpty(),
+            analytics.rollingVwap(datasetId, "NQH25", LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03"), 0, 10).items.isEmpty(),
         )
     }
 
@@ -133,10 +137,61 @@ class AnalyticsServiceTest {
         )
         val analytics = AnalyticsService(repository)
 
-        assertEquals(10, analytics.dailyBars(first.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02")).single().volume)
-        assertEquals(40, analytics.dailyBars(second.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02")).single().volume)
-        assertEquals(1, analytics.rollingVwap(first.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02")).size)
-        assertEquals(1, analytics.rollingVwap(second.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02")).size)
+        assertEquals(10, analytics.dailyBars(first.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 10).items.single().volume)
+        assertEquals(40, analytics.dailyBars(second.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 10).items.single().volume)
+        assertEquals(1, analytics.rollingVwap(first.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 10).items.size)
+        assertEquals(1, analytics.rollingVwap(second.id, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 10).items.size)
+    }
+
+    @Test
+    fun `paginates both analytics result types and returns total counts`() {
+        val (analytics, datasetId) = serviceWithData(
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:31:00,101,103,100,102,10
+                ESH25,2025-01-02T09:32:00,102,104,101,103,10
+                ESM25,2025-01-02T09:30:00,200,202,199,201,10
+            """.trimIndent(),
+        )
+
+        val dailyPage = analytics.dailyBars(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 1, 1)
+        val vwapPage = analytics.rollingVwap(datasetId, "ESH25", LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 1, 1)
+
+        assertEquals(2L, dailyPage.totalElements)
+        assertEquals(1, dailyPage.items.size)
+        assertEquals("ESM25", dailyPage.items.single().contract)
+        assertEquals(3L, vwapPage.totalElements)
+        assertEquals(1, vwapPage.items.size)
+        assertEquals(LocalDateTime.parse("2025-01-02T09:31:00"), vwapPage.items.single().timestamp)
+
+        val pastEnd = analytics.dailyBars(
+            datasetId,
+            null,
+            LocalDate.parse("2025-01-02"),
+            LocalDate.parse("2025-01-02"),
+            page = 10,
+            size = 1,
+        )
+        assertEquals(2L, pastEnd.totalElements)
+        assertTrue(pastEnd.items.isEmpty())
+    }
+
+    @Test
+    fun `rejects invalid analytics pagination`() {
+        val (analytics, datasetId) = serviceWithData(
+            "contract,timestamp,open,high,low,close,volume\nESH25,2025-01-02T09:30:00,100,102,99,101,10",
+        )
+
+        val negativePage = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+            analytics.dailyBars(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), -1, 10)
+        }
+        val excessiveSize = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+            analytics.rollingVwap(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 501)
+        }
+
+        assertEquals(HttpStatus.BAD_REQUEST, negativePage.statusCode)
+        assertEquals(HttpStatus.BAD_REQUEST, excessiveSize.statusCode)
     }
 
     @Test
@@ -144,10 +199,10 @@ class AnalyticsServiceTest {
         val analytics = AnalyticsService(InMemoryDatasetRepository())
 
         val dailyError = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
-            analytics.dailyBars(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"))
+            analytics.dailyBars(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"), 0, 10)
         }
         val vwapError = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
-            analytics.rollingVwap(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"))
+            analytics.rollingVwap(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"), 0, 10)
         }
 
         assertEquals(HttpStatus.NOT_FOUND, dailyError.statusCode)

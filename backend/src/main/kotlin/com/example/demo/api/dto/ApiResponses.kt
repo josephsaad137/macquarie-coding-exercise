@@ -56,6 +56,20 @@ data class RollingVwapResponse(
     val value: Double,
 )
 
+data class DailyBarsPageResponse(
+    val totalElements: Long,
+    val page: Int,
+    val size: Int,
+    val items: List<DailyBarResponse>,
+)
+
+data class RollingVwapPageResponse(
+    val totalElements: Long,
+    val page: Int,
+    val size: Int,
+    val items: List<RollingVwapResponse>,
+)
+
 data class InsightResponse(
     val code: String,
     val title: String,

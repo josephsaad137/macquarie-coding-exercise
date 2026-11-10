@@ -1,6 +1,7 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
+import com.example.demo.service.model.AnalyticsPage
 import com.example.demo.service.model.DailyBar
 import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.RollingVwapPoint
@@ -16,11 +17,19 @@ import org.springframework.web.server.ResponseStatusException
 class AnalyticsService(
     private val datasetRepository: DatasetRepository,
 ) {
-    fun dailyBars(datasetId: UUID, contract: String?, from: LocalDate, to: LocalDate): List<DailyBar> {
+    fun dailyBars(
+        datasetId: UUID,
+        contract: String?,
+        from: LocalDate,
+        to: LocalDate,
+        page: Int,
+        size: Int,
+    ): AnalyticsPage<DailyBar> {
         requireDataset(datasetId)
-        if (to.isBefore(from)) return emptyList()
+        validatePagination(page, size)
+        if (to.isBefore(from)) return paginate(emptyList(), page, size)
 
-        return filteredBars(datasetId, contract)
+        val bars = filteredBars(datasetId, contract)
             .asSequence()
             .filter { bar ->
                 val date = bar.timestamp.toLocalDate()
@@ -40,11 +49,20 @@ class AnalyticsService(
                 )
             }
             .sortedWith(compareBy(DailyBar::contract, DailyBar::date))
+        return paginate(bars, page, size)
     }
 
-    fun rollingVwap(datasetId: UUID, contract: String?, from: LocalDate, to: LocalDate): List<RollingVwapPoint> {
+    fun rollingVwap(
+        datasetId: UUID,
+        contract: String?,
+        from: LocalDate,
+        to: LocalDate,
+        page: Int,
+        size: Int,
+    ): AnalyticsPage<RollingVwapPoint> {
         requireDataset(datasetId)
-        if (to.isBefore(from)) return emptyList()
+        validatePagination(page, size)
+        if (to.isBefore(from)) return paginate(emptyList(), page, size)
         val firstWindowStart = from.atStartOfDay().minusMinutes(VWAP_WINDOW_MINUTES)
         val lastTimestamp = to.atTime(23, 59, 59, 999_999_999)
         val barsByContract = filteredBars(datasetId, contract)
@@ -52,7 +70,7 @@ class AnalyticsService(
             .filter { it.timestamp.isAfter(firstWindowStart) && !it.timestamp.isAfter(lastTimestamp) }
             .groupBy(MarketDataBar::contract)
 
-        return barsByContract.entries
+        val points = barsByContract.entries
             .sortedBy { it.key }
             .flatMap { (contractSymbol, unsortedBars) ->
                 val bars = unsortedBars.sortedBy(MarketDataBar::timestamp)
@@ -86,6 +104,7 @@ class AnalyticsService(
                 }
                 result
             }
+        return paginate(points, page, size)
     }
 
     private fun filteredBars(datasetId: UUID, contract: String?): List<MarketDataBar> {
@@ -101,9 +120,30 @@ class AnalyticsService(
         }
     }
 
+    private fun validatePagination(page: Int, size: Int) {
+        if (page < 0) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be zero or greater")
+        }
+        if (size !in 1..MAX_PAGE_SIZE) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Size must be between 1 and $MAX_PAGE_SIZE")
+        }
+    }
+
+    private fun <T> paginate(items: List<T>, page: Int, size: Int): AnalyticsPage<T> {
+        val offset = page.toLong() * size
+        val pageItems = if (offset >= items.size) emptyList() else items.drop(offset.toInt()).take(size)
+        return AnalyticsPage(
+            totalElements = items.size.toLong(),
+            page = page,
+            size = size,
+            items = pageItems,
+        )
+    }
+
     private fun typicalPrice(bar: MarketDataBar): Double = (bar.high + bar.low + bar.close) / 3.0
 
     private companion object {
         const val VWAP_WINDOW_MINUTES = 15L
+        const val MAX_PAGE_SIZE = 500
     }
 }

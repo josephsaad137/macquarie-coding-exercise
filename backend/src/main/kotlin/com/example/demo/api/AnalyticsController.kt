@@ -1,6 +1,8 @@
 package com.example.demo.api
 
 import com.example.demo.api.dto.DailyBarResponse
+import com.example.demo.api.dto.DailyBarsPageResponse
+import com.example.demo.api.dto.RollingVwapPageResponse
 import com.example.demo.api.dto.RollingVwapResponse
 import com.example.demo.service.AnalyticsService
 import java.time.LocalDate
@@ -19,26 +21,39 @@ import org.springframework.web.server.ResponseStatusException
 class AnalyticsController(
     private val analyticsService: AnalyticsService,
 ) {
+    private companion object {
+        const val MAX_PAGE_SIZE = 500
+    }
+
     @GetMapping("/daily-bars")
     fun dailyBars(
         @RequestParam datasetId: UUID,
         @RequestParam(required = false) contract: String?,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) from: LocalDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
-    ): List<DailyBarResponse> {
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "100") size: Int,
+    ): DailyBarsPageResponse {
         validateDateRange(from, to)
+        validatePagination(page, size)
         val normalizedContract = normalizeContract(contract)
-        return analyticsService.dailyBars(datasetId, normalizedContract, from, to).map { bar ->
-            DailyBarResponse(
-                contract = bar.contract,
-                date = bar.date,
-                open = bar.open,
-                high = bar.high,
-                low = bar.low,
-                close = bar.close,
-                volume = bar.volume,
-            )
-        }
+        val result = analyticsService.dailyBars(datasetId, normalizedContract, from, to, page, size)
+        return DailyBarsPageResponse(
+            totalElements = result.totalElements,
+            page = result.page,
+            size = result.size,
+            items = result.items.map { bar ->
+                DailyBarResponse(
+                    contract = bar.contract,
+                    date = bar.date,
+                    open = bar.open,
+                    high = bar.high,
+                    low = bar.low,
+                    close = bar.close,
+                    volume = bar.volume,
+                )
+            },
+        )
     }
 
     @GetMapping("/vwap")
@@ -47,21 +62,39 @@ class AnalyticsController(
         @RequestParam(required = false) contract: String?,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) from: LocalDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
-    ): List<RollingVwapResponse> {
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "100") size: Int,
+    ): RollingVwapPageResponse {
         validateDateRange(from, to)
+        validatePagination(page, size)
         val normalizedContract = normalizeContract(contract)
-        return analyticsService.rollingVwap(datasetId, normalizedContract, from, to).map { point ->
-            RollingVwapResponse(
-                contract = point.contract,
-                timestamp = point.timestamp,
-                value = point.value,
-            )
-        }
+        val result = analyticsService.rollingVwap(datasetId, normalizedContract, from, to, page, size)
+        return RollingVwapPageResponse(
+            totalElements = result.totalElements,
+            page = result.page,
+            size = result.size,
+            items = result.items.map { point ->
+                RollingVwapResponse(
+                    contract = point.contract,
+                    timestamp = point.timestamp,
+                    value = point.value,
+                )
+            },
+        )
     }
 
     private fun validateDateRange(from: LocalDate, to: LocalDate) {
         if (to.isBefore(from)) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "'to' must be on or after 'from'")
+        }
+    }
+
+    private fun validatePagination(page: Int, size: Int) {
+        if (page < 0) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be zero or greater")
+        }
+        if (size !in 1..MAX_PAGE_SIZE) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Size must be between 1 and $MAX_PAGE_SIZE")
         }
     }
 

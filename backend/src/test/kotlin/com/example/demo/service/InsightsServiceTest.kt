@@ -41,6 +41,27 @@ class InsightsServiceTest {
     }
 
     @Test
+    fun `recommends resolving conflicting bars separately from duplicates`() {
+        val repository = InMemoryDatasetRepository()
+        val imported = DatasetService(repository).importDataset(
+            "conflicting.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:30:00,100,105,99,104,10
+                ESH25,2025-01-02T09:30:00,100,106,99,105,10
+            """.trimIndent().toByteArray(),
+        )
+
+        val insight = InsightsService(repository).getInsights(imported.id).single()
+
+        assertEquals("RECURRING_CONFLICTING_BAR", insight.code)
+        assertEquals("Conflicting bars", insight.title)
+        assertTrue(insight.recommendation.contains("authoritative"))
+    }
+
+    @Test
     fun `provides a general recommendation for isolated quality issues`() {
         val repository = InMemoryDatasetRepository()
         val datasets = DatasetService(repository)

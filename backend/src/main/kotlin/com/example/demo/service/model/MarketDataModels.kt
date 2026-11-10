@@ -44,6 +44,13 @@ data class RollingVwapPoint(
     val value: Double,
 )
 
+data class AnalyticsPage<T>(
+    val totalElements: Long,
+    val page: Int,
+    val size: Int,
+    val items: List<T>,
+)
+
 data class Insight(
     val code: String,
     val title: String,

@@ -31,6 +31,31 @@ class DatasetServiceTest {
         assertEquals(1, imported.rowsImported)
         assertEquals(4, imported.rowsRejected)
         assertEquals("bars.csv", imported.filename)
+        assertEquals(
+            listOf("DUPLICATE_BAR", "MALFORMED_RECORD", "INVALID_VOLUME", "INVALID_OHLC"),
+            service.qualityIssues(imported.id).map { it.code },
+        )
+    }
+
+    @Test
+    fun `distinguishes conflicting records from exact duplicates`() {
+        val imported = service.importDataset(
+            "conflicting.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:30:00,100,105,99,104,10
+            """.trimIndent().toByteArray(),
+        )
+
+        assertEquals(1, imported.rowsImported)
+        assertEquals(2, imported.rowsRejected)
+        assertEquals(
+            listOf("DUPLICATE_BAR", "CONFLICTING_BAR"),
+            service.qualityIssues(imported.id).map { it.code },
+        )
     }
 
     @Test
