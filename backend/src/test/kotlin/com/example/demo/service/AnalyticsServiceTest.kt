@@ -1,5 +1,6 @@
 package com.example.demo.service
 
+import com.example.demo.persistence.InMemoryDatasetRepository
 import com.example.demo.service.model.DailyBar
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -112,9 +113,10 @@ class AnalyticsServiceTest {
     }
 
     private fun serviceWithData(csv: String): AnalyticsService {
-        val datasets = DatasetService()
+        val repository = InMemoryDatasetRepository()
+        val datasets = DatasetService(repository)
         datasets.importDataset("bars.csv", "csv", csv.toByteArray())
-        return AnalyticsService(datasets)
+        return AnalyticsService(repository)
     }
 
     private fun assertClose(expected: Double, actual: Double) {

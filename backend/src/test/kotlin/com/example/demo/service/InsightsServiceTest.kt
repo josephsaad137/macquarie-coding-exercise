@@ -1,5 +1,6 @@
 package com.example.demo.service
 
+import com.example.demo.persistence.InMemoryDatasetRepository
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -10,7 +11,8 @@ import org.springframework.web.server.ResponseStatusException
 class InsightsServiceTest {
     @Test
     fun `suggests recurring rules for repeated quality issue patterns`() {
-        val datasets = DatasetService()
+        val repository = InMemoryDatasetRepository()
+        val datasets = DatasetService(repository)
         val imported = datasets.importDataset(
             "bars.csv",
             "csv",
@@ -26,7 +28,7 @@ class InsightsServiceTest {
             """.trimIndent().toByteArray(),
         )
 
-        val insights = InsightsService(datasets).getInsights(imported.id)
+        val insights = InsightsService(repository).getInsights(imported.id)
 
         assertEquals(
             setOf("RECURRING_DUPLICATE_BAR", "RECURRING_INVALID_OHLC", "RECURRING_INVALID_VOLUME"),
@@ -40,7 +42,8 @@ class InsightsServiceTest {
 
     @Test
     fun `provides a general recommendation for isolated quality issues`() {
-        val datasets = DatasetService()
+        val repository = InMemoryDatasetRepository()
+        val datasets = DatasetService(repository)
         val imported = datasets.importDataset(
             "bars.csv",
             "csv",
@@ -50,7 +53,7 @@ class InsightsServiceTest {
             """.trimIndent().toByteArray(),
         )
 
-        val insights = InsightsService(datasets).getInsights(imported.id)
+        val insights = InsightsService(repository).getInsights(imported.id)
 
         assertEquals(1, insights.size)
         assertEquals("DATA_QUALITY_ISSUES", insights.single().code)
@@ -59,20 +62,21 @@ class InsightsServiceTest {
 
     @Test
     fun `returns no insights for a clean dataset`() {
-        val datasets = DatasetService()
+        val repository = InMemoryDatasetRepository()
+        val datasets = DatasetService(repository)
         val imported = datasets.importDataset(
             "bars.csv",
             "csv",
             "contract,timestamp,open,high,low,close,volume\nESH25,2025-01-02T09:30:00,100,102,99,101,10".toByteArray(),
         )
 
-        assertTrue(InsightsService(datasets).getInsights(imported.id).isEmpty())
+        assertTrue(InsightsService(repository).getInsights(imported.id).isEmpty())
     }
 
     @Test
     fun `rejects unknown dataset ids`() {
         val error = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
-            InsightsService(DatasetService()).getInsights(UUID.randomUUID())
+            InsightsService(InMemoryDatasetRepository()).getInsights(UUID.randomUUID())
         }
 
         assertEquals(HttpStatus.NOT_FOUND, error.statusCode)

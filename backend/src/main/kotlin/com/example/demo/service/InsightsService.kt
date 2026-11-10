@@ -1,5 +1,6 @@
 package com.example.demo.service
 
+import com.example.demo.persistence.DatasetRepository
 import com.example.demo.service.model.Insight
 import java.util.UUID
 import org.springframework.http.HttpStatus
@@ -8,12 +9,12 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class InsightsService(
-    private val datasetService: DatasetService,
+    private val datasetRepository: DatasetRepository,
 ) {
     fun getInsights(datasetId: UUID): List<Insight> {
-        val dataset = datasetService.findDataset(datasetId)
+        val dataset = datasetRepository.findDataset(datasetId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset $datasetId was not found")
-        val issues = datasetService.qualityIssues(datasetId)
+        val issues = datasetRepository.findQualityIssues(datasetId)
         if (issues.isEmpty()) return emptyList()
 
         val recurringIssues = issues.groupBy { it.code }

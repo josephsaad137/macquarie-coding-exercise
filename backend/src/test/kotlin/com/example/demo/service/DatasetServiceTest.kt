@@ -1,5 +1,6 @@
 package com.example.demo.service
 
+import com.example.demo.persistence.InMemoryDatasetRepository
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Test
@@ -10,7 +11,7 @@ import kotlin.test.assertTrue
 import org.springframework.http.HttpStatus
 
 class DatasetServiceTest {
-    private val service = DatasetService()
+    private val service = DatasetService(InMemoryDatasetRepository())
 
     @Test
     fun `imports valid CSV rows and reports malformed and duplicate rows`() {

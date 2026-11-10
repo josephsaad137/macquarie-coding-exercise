@@ -1,5 +1,6 @@
 package com.example.demo.service
 
+import com.example.demo.persistence.DatasetRepository
 import com.example.demo.service.model.DailyBar
 import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.RollingVwapPoint
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Service
 
 @Service
 class AnalyticsService(
-    private val datasetService: DatasetService,
+    private val datasetRepository: DatasetRepository,
 ) {
     fun dailyBars(contract: String?, from: LocalDate, to: LocalDate): List<DailyBar> {
         if (to.isBefore(from)) return emptyList()
@@ -84,7 +85,7 @@ class AnalyticsService(
 
     private fun filteredBars(contract: String?): List<MarketDataBar> {
         val normalizedContract = contract?.trim()?.uppercase(Locale.ROOT)
-        return datasetService.allMarketData().filter { bar ->
+        return datasetRepository.findAllMarketData().filter { bar ->
             normalizedContract == null || bar.contract == normalizedContract
         }
     }

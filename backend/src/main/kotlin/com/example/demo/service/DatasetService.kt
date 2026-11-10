@@ -1,5 +1,7 @@
 package com.example.demo.service
 
+import com.example.demo.persistence.DatasetRepository
+import com.example.demo.persistence.StoredDataset
 import com.example.demo.service.model.DatasetImportResult
 import com.example.demo.service.model.DatasetSummary
 import com.example.demo.service.model.MarketDataBar
@@ -25,7 +27,9 @@ import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 
 @Service
-class DatasetService {
+class DatasetService(
+    private val datasetRepository: DatasetRepository,
+) {
 
     private companion object {
         val REQUIRED_FIELDS = listOf("contract", "timestamp", "open", "high", "low", "close", "volume")
@@ -39,10 +43,6 @@ class DatasetService {
             "volume" to listOf("volume", "v"),
         )
     }
-
-    private val datasets = linkedMapOf<UUID, DatasetSummary>()
-    private val marketData = linkedMapOf<UUID, List<MarketDataBar>>()
-    private val datasetQualityIssues = linkedMapOf<UUID, List<QualityIssue>>()
 
     fun importDataset(filename: String, extension: String, content: ByteArray): DatasetImportResult {
 
@@ -65,11 +65,13 @@ class DatasetService {
             rowsRejected = rowsRejected,
             uploadedAt = uploadedAt,
         )
-        synchronized(datasets) {
-            datasets[id] = summary
-            marketData[id] = importedRows.bars
-            datasetQualityIssues[id] = importedRows.issues
-        }
+        datasetRepository.save(
+            StoredDataset(
+                summary = summary,
+                bars = importedRows.bars,
+                qualityIssues = importedRows.issues,
+            ),
+        )
 
         return DatasetImportResult(
             id = id,
@@ -80,21 +82,13 @@ class DatasetService {
         )
     }
 
-    fun listDatasets(): List<DatasetSummary> = synchronized(datasets) {
-        datasets.values.toList().sortedByDescending { it.uploadedAt }
-    }
+    fun listDatasets(): List<DatasetSummary> = datasetRepository.findAllDatasets()
 
-    fun allMarketData(): List<MarketDataBar> = synchronized(datasets) {
-        marketData.values.flatten()
-    }
+    fun allMarketData(): List<MarketDataBar> = datasetRepository.findAllMarketData()
 
-    fun findDataset(datasetId: UUID): DatasetSummary? = synchronized(datasets) {
-        datasets[datasetId]
-    }
+    fun findDataset(datasetId: UUID): DatasetSummary? = datasetRepository.findDataset(datasetId)
 
-    fun qualityIssues(datasetId: UUID): List<QualityIssue> = synchronized(datasets) {
-        datasetQualityIssues[datasetId].orEmpty()
-    }
+    fun qualityIssues(datasetId: UUID): List<QualityIssue> = datasetRepository.findQualityIssues(datasetId)
 
     private fun processCsv(content: ByteArray): ImportedRows {
         val records = parseCsv(content.toString(Charsets.UTF_8)).iterator()
