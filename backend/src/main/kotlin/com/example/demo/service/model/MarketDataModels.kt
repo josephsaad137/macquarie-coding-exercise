@@ -1,22 +1,8 @@
-package com.example.demo.service
+package com.example.demo.service.model
 
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
-
-interface AnalyticsApiService {
-    fun dailyBars(contract: String?, from: LocalDate, to: LocalDate): List<DailyBar>
-
-    fun rollingVwap(contract: String?, from: LocalDate, to: LocalDate): List<RollingVwapPoint>
-}
-
-interface QualityApiService {
-    fun getQuality(datasetId: UUID, page: Int, size: Int): QualityReport
-}
-
-interface InsightsApiService {
-    fun getInsights(datasetId: UUID): List<Insight>
-}
 
 data class QualityReport(
     val datasetId: UUID,

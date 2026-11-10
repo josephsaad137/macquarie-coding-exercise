@@ -1,11 +1,11 @@
 package com.example.demo.api
 
-import com.example.demo.service.DatasetApiService
-import com.example.demo.service.DatasetImportResult
-import com.example.demo.service.DatasetSummary
-import com.example.demo.service.QualityApiService
-import com.example.demo.service.QualityIssue
-import com.example.demo.service.QualityReport
+import com.example.demo.service.DatasetService
+import com.example.demo.service.model.DatasetImportResult
+import com.example.demo.service.model.DatasetSummary
+import com.example.demo.service.QualityService
+import com.example.demo.service.model.QualityIssue
+import com.example.demo.service.model.QualityReport
 import java.time.Instant
 import java.time.LocalDateTime
 import java.util.UUID
@@ -27,13 +27,13 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multi
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 
 class DatasetControllerTest {
-    private val datasetApiService: DatasetApiService = mock()
-    private val qualityApiService: QualityApiService = mock()
+    private val datasetService: DatasetService = mock()
+    private val qualityService: QualityService = mock()
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(DatasetController(datasetApiService, qualityApiService)).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(DatasetController(datasetService, qualityService)).build()
     }
 
     @Test
@@ -45,7 +45,7 @@ class DatasetControllerTest {
             rowsImported = 2,
             rowsRejected = 1,
         )
-        whenever(datasetApiService.importDataset(eq("bars.csv"), any(), any())).thenReturn(response)
+        whenever(datasetService.importDataset(eq("bars.csv"), any(), any())).thenReturn(response)
         val file = MockMultipartFile(
             "file",
             "bars.csv",
@@ -62,7 +62,7 @@ class DatasetControllerTest {
                 ),
             )
 
-        verify(datasetApiService).importDataset(eq("bars.csv"), eq("text/csv"), any())
+        verify(datasetService).importDataset(eq("bars.csv"), eq("csv"), any())
     }
 
     @Test
@@ -74,13 +74,13 @@ class DatasetControllerTest {
             rowsImported = 2,
             rowsRejected = 0,
         )
-        whenever(datasetApiService.importDataset(eq("ESH25.parquet"), any(), any())).thenReturn(response)
+        whenever(datasetService.importDataset(eq("ESH25.parquet"), any(), any())).thenReturn(response)
         val file = MockMultipartFile("file", "ESH25.parquet", "application/octet-stream", byteArrayOf(1, 2, 3))
 
         mockMvc.perform(multipart("/datasets").file(file))
             .andExpect(status().isCreated)
 
-        verify(datasetApiService).importDataset(eq("ESH25.parquet"), eq("application/octet-stream"), any())
+        verify(datasetService).importDataset(eq("ESH25.parquet"), eq("parquet"), any())
     }
 
     @Test
@@ -90,7 +90,7 @@ class DatasetControllerTest {
         mockMvc.perform(multipart("/datasets").file(file))
             .andExpect(status().isBadRequest)
 
-        verify(datasetApiService, never()).importDataset(any(), any(), any())
+        verify(datasetService, never()).importDataset(any(), any(), any())
     }
 
     @Test
@@ -100,7 +100,7 @@ class DatasetControllerTest {
         mockMvc.perform(multipart("/datasets").file(file))
             .andExpect(status().isBadRequest)
 
-        verify(datasetApiService, never()).importDataset(any(), any(), any())
+        verify(datasetService, never()).importDataset(any(), any(), any())
     }
 
     @Test
@@ -115,7 +115,7 @@ class DatasetControllerTest {
                 uploadedAt = Instant.parse("2026-11-09T05:00:00Z"),
             ),
         )
-        whenever(datasetApiService.listDatasets()).thenReturn(response)
+        whenever(datasetService.listDatasets()).thenReturn(response)
 
         mockMvc.perform(get("/datasets"))
             .andExpect(status().isOk)
@@ -125,13 +125,13 @@ class DatasetControllerTest {
                 ),
             )
 
-        verify(datasetApiService).listDatasets()
+        verify(datasetService).listDatasets()
     }
 
     @Test
     fun `returns paginated quality issues`() {
         val datasetId = UUID.fromString("6b8ebdb2-b60f-49a7-afcc-66f12cb37db3")
-        whenever(qualityApiService.getQuality(datasetId, 1, 25)).thenReturn(
+        whenever(qualityService.getQuality(datasetId, 1, 25)).thenReturn(
             QualityReport(
                 datasetId = datasetId,
                 totalIssues = 1,
@@ -159,7 +159,7 @@ class DatasetControllerTest {
                 ),
             )
 
-        verify(qualityApiService).getQuality(datasetId, 1, 25)
+        verify(qualityService).getQuality(datasetId, 1, 25)
     }
 
     @Test
@@ -172,6 +172,6 @@ class DatasetControllerTest {
         mockMvc.perform(get("/datasets/$datasetId/quality").param("size", "501"))
             .andExpect(status().isBadRequest)
 
-        verify(qualityApiService, never()).getQuality(any(), any(), any())
+        verify(qualityService, never()).getQuality(any(), any(), any())
     }
 }

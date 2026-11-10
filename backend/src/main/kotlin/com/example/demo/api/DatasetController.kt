@@ -4,8 +4,8 @@ import com.example.demo.api.dto.DatasetResponse
 import com.example.demo.api.dto.ImportDatasetResponse
 import com.example.demo.api.dto.QualityIssueResponse
 import com.example.demo.api.dto.QualityResponse
-import com.example.demo.service.DatasetApiService
-import com.example.demo.service.QualityApiService
+import com.example.demo.service.DatasetService
+import com.example.demo.service.QualityService
 import java.util.Locale
 import java.util.UUID
 import org.springframework.http.HttpStatus
@@ -23,8 +23,8 @@ import org.springframework.web.server.ResponseStatusException
 @RestController
 @RequestMapping("/datasets")
 class DatasetController(
-    private val datasetApiService: DatasetApiService,
-    private val qualityApiService: QualityApiService,
+    private val datasetService: DatasetService,
+    private val qualityService: QualityService,
 ) {
 
     private companion object {
@@ -52,12 +52,12 @@ class DatasetController(
         }
         if (file.size > MAX_UPLOAD_SIZE_BYTES) {
             throw ResponseStatusException(
-                HttpStatus.PAYLOAD_TOO_LARGE,
-                "The uploaded file exceeds the $MAX_UPLOAD_SIZE_BYTES byte limit",
+                HttpStatus.CONTENT_TOO_LARGE,
+                "The uploaded file exceeds the file size limit",
             )
         }
 
-        val result = datasetApiService.importDataset(originalFilename, file.contentType, file.bytes)
+        val result = datasetService.importDataset(originalFilename, extension, file.bytes)
         return ResponseEntity.status(HttpStatus.CREATED).body(
             ImportDatasetResponse(
                 id = result.id,
@@ -70,7 +70,7 @@ class DatasetController(
     }
 
     @GetMapping
-    fun listDatasets(): List<DatasetResponse> = datasetApiService.listDatasets().map { dataset ->
+    fun listDatasets(): List<DatasetResponse> = datasetService.listDatasets().map { dataset ->
         DatasetResponse(
             id = dataset.id,
             filename = dataset.filename,
@@ -94,7 +94,7 @@ class DatasetController(
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Size must be between 1 and $MAX_PAGE_SIZE")
         }
 
-        val report = qualityApiService.getQuality(datasetId, page, size)
+        val report = qualityService.getQuality(datasetId, page, size)
         return QualityResponse(
             datasetId = report.datasetId,
             totalIssues = report.totalIssues,

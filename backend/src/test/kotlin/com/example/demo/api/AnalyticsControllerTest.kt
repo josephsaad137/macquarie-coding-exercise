@@ -1,8 +1,8 @@
 package com.example.demo.api
 
-import com.example.demo.service.AnalyticsApiService
-import com.example.demo.service.DailyBar
-import com.example.demo.service.RollingVwapPoint
+import com.example.demo.service.AnalyticsService
+import com.example.demo.service.model.DailyBar
+import com.example.demo.service.model.RollingVwapPoint
 import java.time.LocalDate
 import java.time.LocalDateTime
 import org.junit.jupiter.api.BeforeEach
@@ -20,18 +20,18 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 class AnalyticsControllerTest {
-    private val analyticsApiService: AnalyticsApiService = mock()
+    private val analyticsService: AnalyticsService = mock()
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(AnalyticsController(analyticsApiService)).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(AnalyticsController(analyticsService)).build()
     }
 
     @Test
     fun `returns daily bars for contract and date range`() {
         whenever(
-            analyticsApiService.dailyBars(
+            analyticsService.dailyBars(
                 "ESH25",
                 LocalDate.parse("2025-01-02"),
                 LocalDate.parse("2025-01-03"),
@@ -63,7 +63,7 @@ class AnalyticsControllerTest {
                 ),
             )
 
-        verify(analyticsApiService).dailyBars(
+        verify(analyticsService).dailyBars(
             "ESH25",
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-03"),
@@ -79,7 +79,7 @@ class AnalyticsControllerTest {
         )
             .andExpect(status().isBadRequest)
 
-        verify(analyticsApiService, never()).dailyBars(any(), any(), any())
+        verify(analyticsService, never()).dailyBars(any(), any(), any())
     }
 
     @Test
@@ -91,13 +91,13 @@ class AnalyticsControllerTest {
         )
             .andExpect(status().isBadRequest)
 
-        verify(analyticsApiService, never()).dailyBars(any(), any(), any())
+        verify(analyticsService, never()).dailyBars(any(), any(), any())
     }
 
     @Test
     fun `returns rolling VWAP points`() {
         whenever(
-            analyticsApiService.rollingVwap(
+            analyticsService.rollingVwap(
                 eq(null),
                 eq(LocalDate.parse("2025-01-02")),
                 eq(LocalDate.parse("2025-01-02")),
@@ -124,7 +124,7 @@ class AnalyticsControllerTest {
                 ),
             )
 
-        verify(analyticsApiService).rollingVwap(
+        verify(analyticsService).rollingVwap(
             null,
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-02"),

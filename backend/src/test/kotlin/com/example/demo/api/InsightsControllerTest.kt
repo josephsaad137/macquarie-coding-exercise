@@ -1,7 +1,7 @@
 package com.example.demo.api
 
-import com.example.demo.service.Insight
-import com.example.demo.service.InsightsApiService
+import com.example.demo.service.model.Insight
+import com.example.demo.service.InsightsService
 import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -15,18 +15,18 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 
 class InsightsControllerTest {
-    private val insightsApiService: InsightsApiService = mock()
+    private val insightsService: InsightsService = mock()
     private lateinit var mockMvc: MockMvc
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(InsightsController(insightsApiService)).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(InsightsController(insightsService)).build()
     }
 
     @Test
     fun `returns insights for a dataset`() {
         val datasetId = UUID.fromString("6b8ebdb2-b60f-49a7-afcc-66f12cb37db3")
-        whenever(insightsApiService.getInsights(datasetId)).thenReturn(
+        whenever(insightsService.getInsights(datasetId)).thenReturn(
             listOf(
                 Insight(
                     code = "RECURRING_GAPS",
@@ -45,6 +45,6 @@ class InsightsControllerTest {
                 ),
             )
 
-        verify(insightsApiService).getInsights(datasetId)
+        verify(insightsService).getInsights(datasetId)
     }
 }

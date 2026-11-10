@@ -20,6 +20,9 @@ repositories {
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	implementation("org.apache.hadoop:hadoop-common:3.3.6")
+	implementation("org.apache.hadoop:hadoop-mapreduce-client-core:3.3.6")
+	implementation("org.apache.parquet:parquet-avro:1.15.2")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
