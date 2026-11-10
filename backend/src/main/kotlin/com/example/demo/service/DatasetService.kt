@@ -2,6 +2,8 @@ package com.example.demo.service
 
 import com.example.demo.service.model.DatasetImportResult
 import com.example.demo.service.model.DatasetSummary
+import com.example.demo.service.model.MarketDataBar
+import com.example.demo.service.model.QualityIssue
 import java.io.IOException
 import java.io.EOFException
 import java.nio.ByteBuffer
@@ -39,15 +41,19 @@ class DatasetService {
     }
 
     private val datasets = linkedMapOf<UUID, DatasetSummary>()
+    private val marketData = linkedMapOf<UUID, List<MarketDataBar>>()
+    private val datasetQualityIssues = linkedMapOf<UUID, List<QualityIssue>>()
 
     fun importDataset(filename: String, extension: String, content: ByteArray): DatasetImportResult {
 
-        val (rowsImported, rowsRejected) = when (extension) {
+        val importedRows = when (extension) {
             "csv" -> processCsv(content)
             "parquet" -> processParquet(content)
             else -> throw badRequest("Only CSV and Parquet files are supported")
         }
 
+        val rowsImported = importedRows.bars.size
+        val rowsRejected = importedRows.rowsRejected
         val status = if (rowsRejected == 0) "COMPLETED" else "COMPLETED_WITH_WARNINGS"
         val id = UUID.randomUUID()
         val uploadedAt = Instant.now()
@@ -61,6 +67,8 @@ class DatasetService {
         )
         synchronized(datasets) {
             datasets[id] = summary
+            marketData[id] = importedRows.bars
+            datasetQualityIssues[id] = importedRows.issues
         }
 
         return DatasetImportResult(
@@ -76,59 +84,105 @@ class DatasetService {
         datasets.values.toList().sortedByDescending { it.uploadedAt }
     }
 
-    private fun processCsv(content: ByteArray): Pair<Int, Int> {
+    fun allMarketData(): List<MarketDataBar> = synchronized(datasets) {
+        marketData.values.flatten()
+    }
+
+    fun findDataset(datasetId: UUID): DatasetSummary? = synchronized(datasets) {
+        datasets[datasetId]
+    }
+
+    fun qualityIssues(datasetId: UUID): List<QualityIssue> = synchronized(datasets) {
+        datasetQualityIssues[datasetId].orEmpty()
+    }
+
+    private fun processCsv(content: ByteArray): ImportedRows {
         val records = parseCsv(content.toString(Charsets.UTF_8)).iterator()
         val headers = records.asSequence().firstOrNull { row -> row.any(String::isNotBlank) }
             ?: throw badRequest("The CSV file does not contain a header")
         val columns = resolveColumns(headers)
         val seenBars = hashSetOf<BarKey>()
-        var imported = 0
-        var rejected = 0
+        val imported = mutableListOf<MarketDataBar>()
+        val issues = mutableListOf<QualityIssue>()
+        var rowNumber = 1L
 
         for (row in records.asSequence()) {
             if (row.all(String::isBlank)) continue
+            rowNumber++
             if (row.size != headers.size) {
-                rejected++
+                issues.add(
+                    QualityIssue(
+                        rowNumber = rowNumber,
+                        contract = row.getOrNull(columns.getValue("contract"))?.trim()?.uppercase(Locale.ROOT),
+                        timestamp = row.getOrNull(columns.getValue("timestamp"))?.let(::parseTimestamp),
+                        code = "MALFORMED_RECORD",
+                        message = "Record has ${row.size} fields; expected ${headers.size}",
+                    ),
+                )
                 continue
             }
             val values = columns.mapValues { (_, index) -> row.getOrNull(index)?.trim().orEmpty() }
-            val bar = parseBar(values)
-            if (bar == null) {
-                rejected++
-                continue
-            }
-            if (!seenBars.add(BarKey(bar.contract, bar.timestamp))) {
-                rejected++
-            } else {
-                imported++
+            when (val parsed = parseBar(values)) {
+                is BarParseResult.Invalid -> issues.add(
+                    qualityIssue(rowNumber, values, parsed.code, parsed.message),
+                )
+                is BarParseResult.Valid -> {
+                    if (!seenBars.add(BarKey(parsed.bar.contract, parsed.bar.timestamp))) {
+                        issues.add(
+                            qualityIssue(
+                                rowNumber,
+                                values,
+                                "DUPLICATE_BAR",
+                                "A bar already exists for this contract and timestamp",
+                            ),
+                        )
+                    } else {
+                        imported.add(parsed.bar)
+                    }
+                }
             }
         }
-        return imported to rejected
+        return ImportedRows(imported, issues)
     }
 
-    private fun processParquet(content: ByteArray): Pair<Int, Int> {
+    private fun processParquet(content: ByteArray): ImportedRows {
         try {
             val reader = AvroParquetReader.builder<GenericRecord>(
                 ByteArrayParquetInputFile(content),
                 PlainParquetConfiguration(),
             ).build()
             reader.use { parquetReader ->
-                val firstRecord = parquetReader.read() ?: return 0 to 0
+                val firstRecord = parquetReader.read() ?: return ImportedRows(emptyList(), emptyList())
                 val headers = firstRecord.schema.fields.map { it.name() }
                 val columns = resolveColumns(headers)
                 val seenBars = hashSetOf<BarKey>()
-                var imported = 0
-                var rejected = 0
+                val imported = mutableListOf<MarketDataBar>()
+                val issues = mutableListOf<QualityIssue>()
+                var rowNumber = 0L
 
                 fun inspect(record: GenericRecord) {
+                    rowNumber++
                     val values = columns.mapValues { (_, index) ->
                         record.get(headers[index])?.toString()?.trim().orEmpty()
                     }
-                    val bar = parseBar(values)
-                    if (bar == null || !seenBars.add(BarKey(bar.contract, bar.timestamp))) {
-                        rejected++
-                    } else {
-                        imported++
+                    when (val parsed = parseBar(values)) {
+                        is BarParseResult.Invalid -> issues.add(
+                            qualityIssue(rowNumber, values, parsed.code, parsed.message),
+                        )
+                        is BarParseResult.Valid -> {
+                            if (!seenBars.add(BarKey(parsed.bar.contract, parsed.bar.timestamp))) {
+                                issues.add(
+                                    qualityIssue(
+                                        rowNumber,
+                                        values,
+                                        "DUPLICATE_BAR",
+                                        "A bar already exists for this contract and timestamp",
+                                    ),
+                                )
+                            } else {
+                                imported.add(parsed.bar)
+                            }
+                        }
                     }
                 }
 
@@ -137,7 +191,7 @@ class DatasetService {
                     val record = parquetReader.read() ?: break
                     inspect(record)
                 }
-                return imported to rejected
+                return ImportedRows(imported, issues)
             }
         } catch (exception: ResponseStatusException) {
             throw exception
@@ -159,17 +213,40 @@ class DatasetService {
         return columns
     }
 
-    private fun parseBar(values: Map<String, String>): ParsedBar? {
-        val contract = values["contract"]?.trim()?.takeIf(String::isNotEmpty)?.uppercase(Locale.ROOT) ?: return null
-        val timestamp = values["timestamp"]?.let(::parseTimestamp) ?: return null
-        val open = values["open"]?.toDoubleOrNull()?.takeIf(Double::isFinite) ?: return null
-        val high = values["high"]?.toDoubleOrNull()?.takeIf(Double::isFinite) ?: return null
-        val low = values["low"]?.toDoubleOrNull()?.takeIf(Double::isFinite) ?: return null
-        val close = values["close"]?.toDoubleOrNull()?.takeIf(Double::isFinite) ?: return null
-        val volume = values["volume"]?.toLongOrNull()?.takeIf { it >= 0 } ?: return null
-        if (high < maxOf(open, low, close) || low > minOf(open, high, close)) return null
-        return ParsedBar(contract, timestamp)
+    private fun parseBar(values: Map<String, String>): BarParseResult {
+        val contract = values["contract"]?.trim()?.takeIf(String::isNotEmpty)?.uppercase(Locale.ROOT)
+            ?: return BarParseResult.Invalid("MALFORMED_RECORD", "Contract is missing")
+        val timestamp = values["timestamp"]?.let(::parseTimestamp)
+            ?: return BarParseResult.Invalid("MALFORMED_RECORD", "Timestamp is missing or invalid")
+        val open = values["open"]?.toDoubleOrNull()?.takeIf(Double::isFinite)
+            ?: return BarParseResult.Invalid("MALFORMED_RECORD", "Open price is missing or invalid")
+        val high = values["high"]?.toDoubleOrNull()?.takeIf(Double::isFinite)
+            ?: return BarParseResult.Invalid("MALFORMED_RECORD", "High price is missing or invalid")
+        val low = values["low"]?.toDoubleOrNull()?.takeIf(Double::isFinite)
+            ?: return BarParseResult.Invalid("MALFORMED_RECORD", "Low price is missing or invalid")
+        val close = values["close"]?.toDoubleOrNull()?.takeIf(Double::isFinite)
+            ?: return BarParseResult.Invalid("MALFORMED_RECORD", "Close price is missing or invalid")
+        val volume = values["volume"]?.toLongOrNull()
+            ?: return BarParseResult.Invalid("INVALID_VOLUME", "Volume is missing or is not an integer")
+        if (volume < 0) return BarParseResult.Invalid("INVALID_VOLUME", "Volume must not be negative")
+        if (high < maxOf(open, low, close) || low > minOf(open, high, close)) {
+            return BarParseResult.Invalid("INVALID_OHLC", "Prices violate the high/low OHLC range")
+        }
+        return BarParseResult.Valid(MarketDataBar(contract, timestamp, open, high, low, close, volume))
     }
+
+    private fun qualityIssue(
+        rowNumber: Long,
+        values: Map<String, String>,
+        code: String,
+        message: String,
+    ): QualityIssue = QualityIssue(
+        rowNumber = rowNumber,
+        contract = values["contract"]?.trim()?.takeIf(String::isNotEmpty)?.uppercase(Locale.ROOT),
+        timestamp = values["timestamp"]?.let(::parseTimestamp),
+        code = code,
+        message = message,
+    )
 
     private fun parseTimestamp(value: String): LocalDateTime? {
         val normalized = value.trim()
@@ -238,9 +315,16 @@ class DatasetService {
     private fun badRequest(message: String): ResponseStatusException =
         ResponseStatusException(HttpStatus.BAD_REQUEST, message)
 
-    private data class ParsedBar(val contract: String, val timestamp: LocalDateTime)
-
     private data class BarKey(val contract: String, val timestamp: LocalDateTime)
+
+    private sealed interface BarParseResult {
+        data class Valid(val bar: MarketDataBar) : BarParseResult
+        data class Invalid(val code: String, val message: String) : BarParseResult
+    }
+
+    private data class ImportedRows(val bars: List<MarketDataBar>, val issues: List<QualityIssue>) {
+        val rowsRejected: Int get() = issues.size
+    }
 
     private class ByteArrayParquetInputFile(private val content: ByteArray) : InputFile {
         override fun getLength(): Long = content.size.toLong()

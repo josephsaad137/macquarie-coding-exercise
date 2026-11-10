@@ -4,6 +4,16 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
 
+data class MarketDataBar(
+    val contract: String,
+    val timestamp: LocalDateTime,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+    val volume: Long,
+)
+
 data class QualityReport(
     val datasetId: UUID,
     val totalIssues: Long,
