@@ -21,7 +21,7 @@ data class QualityReport(
 )
 
 data class QualityIssue(
-    val rowNumber: Long,
+    val rowNumber: Long?,
     val contract: String?,
     val timestamp: LocalDateTime?,
     val code: String,

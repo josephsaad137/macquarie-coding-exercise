@@ -26,24 +26,46 @@ class IntegrationTest {
         val csv = """
             contract,timestamp,open,high,low,close,volume
             $contract,2025-01-02T09:30:00,100,102,99,101,10
-            $contract,2025-01-02T09:40:00,101,105,100,104,30
-            $contract,2025-01-02T09:40:00,101,105,100,104,30
-            $contract,2025-01-02T09:50:00,104,103,100,102,5
+            $contract,2025-01-02T09:33:00,101,105,100,104,30
+            $contract,2025-01-02T09:33:00,101,105,100,104,30
+            $contract,2025-01-02T09:34:00,104,103,100,102,5
         """.trimIndent()
         val file = MockMultipartFile("file", "integration-bars.csv", "text/csv", csv.toByteArray())
 
-        val importResponse = mockMvc.perform(multipart("/datasets").file(file))
+        val importResponse = mockMvc.perform(multipart("/datasets").file(file).param("frequency", "minute"))
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.filename").value("integration-bars.csv"))
             .andExpect(jsonPath("$.status").value("COMPLETED_WITH_WARNINGS"))
             .andExpect(jsonPath("$.rowsImported").value(2))
             .andExpect(jsonPath("$.rowsRejected").value(2))
+            .andExpect(jsonPath("$.frequency").value("minute"))
             .andReturn()
             .response
             .contentAsString
         val datasetId = UUID.fromString(
             Regex(""""id":"([^"]+)"""").find(importResponse)?.groupValues?.get(1)
                 ?: error("Import response did not contain a dataset ID"),
+        )
+        val secondFile = MockMultipartFile(
+            "file",
+            "other-bars.csv",
+            "text/csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                $contract,2025-01-02T09:30:00,200,202,199,201,2
+                $contract,2025-01-02T09:31:00,201,203,200,202,2
+            """.trimIndent().toByteArray(),
+        )
+        val secondImportResponse = mockMvc.perform(
+            multipart("/datasets").file(secondFile).param("frequency", "minute"),
+        )
+            .andExpect(status().isCreated)
+            .andReturn()
+            .response
+            .contentAsString
+        val secondDatasetId = UUID.fromString(
+            Regex(""""id":"([^"]+)"""").find(secondImportResponse)?.groupValues?.get(1)
+                ?: error("Second import response did not contain a dataset ID"),
         )
 
         mockMvc.perform(get("/datasets"))
@@ -53,17 +75,21 @@ class IntegrationTest {
         mockMvc.perform(get("/datasets/$datasetId/quality").param("page", "0").param("size", "10"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.datasetId").value(datasetId.toString()))
-            .andExpect(jsonPath("$.totalIssues").value(2))
+            .andExpect(jsonPath("$.totalIssues").value(3))
             .andExpect(jsonPath("$.issues[0].code").value("DUPLICATE_BAR"))
             .andExpect(jsonPath("$.issues[1].code").value("INVALID_OHLC"))
+            .andExpect(jsonPath("$.issues[2].code").value("MISSING_TIMESTAMP"))
+            .andExpect(jsonPath("$.issues[2].rowNumber").doesNotExist())
+            .andExpect(jsonPath("$.issues[2].timestamp").value("2025-01-02T09:31:00"))
 
         mockMvc.perform(get("/insights").param("datasetId", datasetId.toString()))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$[0].code").value("DATA_QUALITY_ISSUES"))
-            .andExpect(jsonPath("$[0].evidence[0]").value("2 rejected row(s) require review."))
+            .andExpect(jsonPath("$[0].evidence[0]").value("3 finding(s) require review."))
 
         mockMvc.perform(
             get("/analytics/daily-bars")
+                .param("datasetId", datasetId.toString())
                 .param("contract", contract.lowercase())
                 .param("from", "2025-01-02")
                 .param("to", "2025-01-02"),
@@ -78,6 +104,7 @@ class IntegrationTest {
 
         mockMvc.perform(
             get("/analytics/vwap")
+                .param("datasetId", datasetId.toString())
                 .param("contract", contract)
                 .param("from", "2025-01-02")
                 .param("to", "2025-01-02"),
@@ -85,5 +112,28 @@ class IntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[1].value").value(closeTo(102.4166666667, 0.000001)))
+
+        mockMvc.perform(
+            get("/analytics/daily-bars")
+                .param("datasetId", secondDatasetId.toString())
+                .param("contract", contract)
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-02"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].volume").value(4))
+            .andExpect(jsonPath("$[0].open").value(200.0))
+
+        mockMvc.perform(
+            get("/analytics/vwap")
+                .param("datasetId", secondDatasetId.toString())
+                .param("contract", contract)
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-02"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].value").value(closeTo(200.6666666667, 0.000001)))
     }
 }

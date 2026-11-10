@@ -5,6 +5,7 @@ import com.example.demo.service.model.DailyBar
 import com.example.demo.service.model.RollingVwapPoint
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.UUID
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -22,6 +23,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 class AnalyticsControllerTest {
     private val analyticsService: AnalyticsService = mock()
     private lateinit var mockMvc: MockMvc
+    private val datasetId = UUID.fromString("6b8ebdb2-b60f-49a7-afcc-66f12cb37db3")
 
     @BeforeEach
     fun setUp() {
@@ -32,6 +34,7 @@ class AnalyticsControllerTest {
     fun `returns daily bars for contract and date range`() {
         whenever(
             analyticsService.dailyBars(
+                datasetId,
                 "ESH25",
                 LocalDate.parse("2025-01-02"),
                 LocalDate.parse("2025-01-03"),
@@ -52,6 +55,7 @@ class AnalyticsControllerTest {
 
         mockMvc.perform(
             get("/analytics/daily-bars")
+                .param("datasetId", datasetId.toString())
                 .param("contract", "ESH25")
                 .param("from", "2025-01-02")
                 .param("to", "2025-01-03"),
@@ -64,6 +68,7 @@ class AnalyticsControllerTest {
             )
 
         verify(analyticsService).dailyBars(
+            datasetId,
             "ESH25",
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-03"),
@@ -74,30 +79,51 @@ class AnalyticsControllerTest {
     fun `rejects inverted analytics date range`() {
         mockMvc.perform(
             get("/analytics/daily-bars")
+                .param("datasetId", datasetId.toString())
                 .param("from", "2025-01-04")
                 .param("to", "2025-01-03"),
         )
             .andExpect(status().isBadRequest)
 
-        verify(analyticsService, never()).dailyBars(any(), any(), any())
+        verify(analyticsService, never()).dailyBars(any(), any(), any(), any())
     }
 
     @Test
     fun `rejects malformed analytics dates`() {
         mockMvc.perform(
             get("/analytics/daily-bars")
+                .param("datasetId", datasetId.toString())
                 .param("from", "not-a-date")
                 .param("to", "2025-01-03"),
         )
             .andExpect(status().isBadRequest)
 
-        verify(analyticsService, never()).dailyBars(any(), any(), any())
+        verify(analyticsService, never()).dailyBars(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `requires a dataset id for analytics queries`() {
+        mockMvc.perform(
+            get("/analytics/daily-bars")
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-03"),
+        ).andExpect(status().isBadRequest)
+
+        mockMvc.perform(
+            get("/analytics/vwap")
+                .param("from", "2025-01-02")
+                .param("to", "2025-01-03"),
+        ).andExpect(status().isBadRequest)
+
+        verify(analyticsService, never()).dailyBars(any(), any(), any(), any())
+        verify(analyticsService, never()).rollingVwap(any(), any(), any(), any())
     }
 
     @Test
     fun `returns rolling VWAP points`() {
         whenever(
             analyticsService.rollingVwap(
+                eq(datasetId),
                 eq(null),
                 eq(LocalDate.parse("2025-01-02")),
                 eq(LocalDate.parse("2025-01-02")),
@@ -114,6 +140,7 @@ class AnalyticsControllerTest {
 
         mockMvc.perform(
             get("/analytics/vwap")
+                .param("datasetId", datasetId.toString())
                 .param("from", "2025-01-02")
                 .param("to", "2025-01-02"),
         )
@@ -125,6 +152,7 @@ class AnalyticsControllerTest {
             )
 
         verify(analyticsService).rollingVwap(
+            datasetId,
             null,
             LocalDate.parse("2025-01-02"),
             LocalDate.parse("2025-01-02"),

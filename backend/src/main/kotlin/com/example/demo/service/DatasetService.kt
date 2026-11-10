@@ -2,12 +2,13 @@ package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
 import com.example.demo.persistence.StoredDataset
+import com.example.demo.service.model.DatasetFrequency
 import com.example.demo.service.model.DatasetImportResult
 import com.example.demo.service.model.DatasetSummary
 import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.QualityIssue
-import java.io.IOException
 import java.io.EOFException
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.time.Instant
 import java.time.LocalDate
@@ -15,6 +16,7 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
 import org.apache.avro.generic.GenericRecord
@@ -44,7 +46,12 @@ class DatasetService(
         )
     }
 
-    fun importDataset(filename: String, extension: String, content: ByteArray): DatasetImportResult {
+    fun importDataset(
+        filename: String,
+        extension: String,
+        content: ByteArray,
+        frequency: DatasetFrequency = DatasetFrequency.MINUTE,
+    ): DatasetImportResult {
 
         val importedRows = when (extension) {
             "csv" -> processCsv(content)
@@ -53,8 +60,10 @@ class DatasetService(
         }
 
         val rowsImported = importedRows.bars.size
+        val gaps = findGaps(importedRows.bars, frequency)
+        val qualityIssues = importedRows.issues + gaps
         val rowsRejected = importedRows.rowsRejected
-        val status = if (rowsRejected == 0) "COMPLETED" else "COMPLETED_WITH_WARNINGS"
+        val status = if (qualityIssues.isEmpty()) "COMPLETED" else "COMPLETED_WITH_WARNINGS"
         val id = UUID.randomUUID()
         val uploadedAt = Instant.now()
         val summary = DatasetSummary(
@@ -64,12 +73,13 @@ class DatasetService(
             rowsImported = rowsImported,
             rowsRejected = rowsRejected,
             uploadedAt = uploadedAt,
+            frequency = frequency,
         )
         datasetRepository.save(
             StoredDataset(
                 summary = summary,
                 bars = importedRows.bars,
-                qualityIssues = importedRows.issues,
+                qualityIssues = qualityIssues,
             ),
         )
 
@@ -79,6 +89,7 @@ class DatasetService(
             status = status,
             rowsImported = rowsImported,
             rowsRejected = rowsRejected,
+            frequency = frequency,
         )
     }
 
@@ -90,6 +101,40 @@ class DatasetService(
 
     fun qualityIssues(datasetId: UUID): List<QualityIssue> = datasetRepository.findQualityIssues(datasetId)
 
+    private fun findGaps(bars: List<MarketDataBar>, frequency: DatasetFrequency): List<QualityIssue> =
+        bars.groupBy(MarketDataBar::contract).values.flatMap { contractBars ->
+            val orderedBars = contractBars.sortedBy(MarketDataBar::timestamp)
+            orderedBars.zipWithNext().mapNotNull { (previous, next) ->
+                val missingCount: Long
+                val firstMissing: LocalDateTime
+                when (frequency) {
+                    DatasetFrequency.MINUTE -> {
+                        val elapsedMinutes = ChronoUnit.MINUTES.between(previous.timestamp, next.timestamp)
+                        if (elapsedMinutes <= 0) return@mapNotNull null
+                        val lastExpected = previous.timestamp.plusMinutes(elapsedMinutes)
+                        missingCount = if (lastExpected.isBefore(next.timestamp)) elapsedMinutes else elapsedMinutes - 1
+                        firstMissing = previous.timestamp.plusMinutes(1)
+                    }
+                    DatasetFrequency.DAILY -> {
+                        val previousDate = previous.timestamp.toLocalDate()
+                        val nextDate = next.timestamp.toLocalDate()
+                        val elapsedDays = ChronoUnit.DAYS.between(previousDate, nextDate)
+                        if (elapsedDays <= 0) return@mapNotNull null
+                        missingCount = elapsedDays - 1
+                        firstMissing = previousDate.plusDays(1).atStartOfDay()
+                    }
+                }
+                if (missingCount <= 0) return@mapNotNull null
+                QualityIssue(
+                    rowNumber = null,
+                    contract = previous.contract,
+                    timestamp = firstMissing,
+                    code = "MISSING_TIMESTAMP",
+                    message = "$missingCount missing ${frequency.name.lowercase(Locale.ROOT)} bar(s) between ${previous.timestamp} and ${next.timestamp}",
+                )
+            }
+        }
+
     private fun processCsv(content: ByteArray): ImportedRows {
         val records = parseCsv(content.toString(Charsets.UTF_8)).iterator()
         val headers = records.asSequence().firstOrNull { row -> row.any(String::isNotBlank) }
@@ -98,12 +143,14 @@ class DatasetService(
         val seenBars = hashSetOf<BarKey>()
         val imported = mutableListOf<MarketDataBar>()
         val issues = mutableListOf<QualityIssue>()
+        var rowsRejected = 0
         var rowNumber = 1L
 
         for (row in records.asSequence()) {
             if (row.all(String::isBlank)) continue
             rowNumber++
             if (row.size != headers.size) {
+                rowsRejected++
                 issues.add(
                     QualityIssue(
                         rowNumber = rowNumber,
@@ -117,11 +164,13 @@ class DatasetService(
             }
             val values = columns.mapValues { (_, index) -> row.getOrNull(index)?.trim().orEmpty() }
             when (val parsed = parseBar(values)) {
-                is BarParseResult.Invalid -> issues.add(
-                    qualityIssue(rowNumber, values, parsed.code, parsed.message),
-                )
+                is BarParseResult.Invalid -> {
+                    rowsRejected++
+                    issues.add(qualityIssue(rowNumber, values, parsed.code, parsed.message))
+                }
                 is BarParseResult.Valid -> {
                     if (!seenBars.add(BarKey(parsed.bar.contract, parsed.bar.timestamp))) {
+                        rowsRejected++
                         issues.add(
                             qualityIssue(
                                 rowNumber,
@@ -136,7 +185,7 @@ class DatasetService(
                 }
             }
         }
-        return ImportedRows(imported, issues)
+        return ImportedRows(imported, issues, rowsRejected)
     }
 
     private fun processParquet(content: ByteArray): ImportedRows {
@@ -146,12 +195,13 @@ class DatasetService(
                 PlainParquetConfiguration(),
             ).build()
             reader.use { parquetReader ->
-                val firstRecord = parquetReader.read() ?: return ImportedRows(emptyList(), emptyList())
+                val firstRecord = parquetReader.read() ?: return ImportedRows(emptyList(), emptyList(), 0)
                 val headers = firstRecord.schema.fields.map { it.name() }
                 val columns = resolveColumns(headers)
                 val seenBars = hashSetOf<BarKey>()
                 val imported = mutableListOf<MarketDataBar>()
                 val issues = mutableListOf<QualityIssue>()
+                var rowsRejected = 0
                 var rowNumber = 0L
 
                 fun inspect(record: GenericRecord) {
@@ -160,11 +210,13 @@ class DatasetService(
                         record.get(headers[index])?.toString()?.trim().orEmpty()
                     }
                     when (val parsed = parseBar(values)) {
-                        is BarParseResult.Invalid -> issues.add(
-                            qualityIssue(rowNumber, values, parsed.code, parsed.message),
-                        )
+                        is BarParseResult.Invalid -> {
+                            rowsRejected++
+                            issues.add(qualityIssue(rowNumber, values, parsed.code, parsed.message))
+                        }
                         is BarParseResult.Valid -> {
                             if (!seenBars.add(BarKey(parsed.bar.contract, parsed.bar.timestamp))) {
+                                rowsRejected++
                                 issues.add(
                                     qualityIssue(
                                         rowNumber,
@@ -185,7 +237,7 @@ class DatasetService(
                     val record = parquetReader.read() ?: break
                     inspect(record)
                 }
-                return ImportedRows(imported, issues)
+                return ImportedRows(imported, issues, rowsRejected)
             }
         } catch (exception: ResponseStatusException) {
             throw exception
@@ -316,9 +368,7 @@ class DatasetService(
         data class Invalid(val code: String, val message: String) : BarParseResult
     }
 
-    private data class ImportedRows(val bars: List<MarketDataBar>, val issues: List<QualityIssue>) {
-        val rowsRejected: Int get() = issues.size
-    }
+    private data class ImportedRows(val bars: List<MarketDataBar>, val issues: List<QualityIssue>, val rowsRejected: Int)
 
     private class ByteArrayParquetInputFile(private val content: ByteArray) : InputFile {
         override fun getLength(): Long = content.size.toLong()

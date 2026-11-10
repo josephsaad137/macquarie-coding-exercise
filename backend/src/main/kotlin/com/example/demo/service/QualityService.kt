@@ -1,6 +1,7 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
+import com.example.demo.service.model.QualityIssue
 import com.example.demo.service.model.QualityReport
 import java.util.UUID
 import org.springframework.http.HttpStatus
@@ -22,7 +23,9 @@ class QualityService(
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset $datasetId was not found")
         }
 
-        val allIssues = datasetRepository.findQualityIssues(datasetId).sortedBy { it.rowNumber }
+        val allIssues = datasetRepository.findQualityIssues(datasetId).sortedWith(
+            compareBy<QualityIssue>({ it.rowNumber == null }, { it.rowNumber }, { it.timestamp }),
+        )
         val offset = page.toLong() * size
         val issues = if (offset >= allIssues.size) {
             emptyList()

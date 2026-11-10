@@ -11,6 +11,7 @@ data class ImportDatasetResponse(
     val status: String,
     val rowsImported: Int,
     val rowsRejected: Int,
+    val frequency: String,
 )
 
 data class DatasetResponse(
@@ -20,6 +21,7 @@ data class DatasetResponse(
     val rowsImported: Int,
     val rowsRejected: Int,
     val uploadedAt: Instant,
+    val frequency: String,
 )
 
 data class QualityResponse(
@@ -31,7 +33,7 @@ data class QualityResponse(
 )
 
 data class QualityIssueResponse(
-    val rowNumber: Long,
+    val rowNumber: Long?,
     val contract: String?,
     val timestamp: LocalDateTime?,
     val code: String,

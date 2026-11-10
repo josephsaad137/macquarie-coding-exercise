@@ -4,6 +4,7 @@ import com.example.demo.service.DatasetService
 import com.example.demo.service.model.DatasetImportResult
 import com.example.demo.service.model.DatasetSummary
 import com.example.demo.service.QualityService
+import com.example.demo.service.model.DatasetFrequency
 import com.example.demo.service.model.QualityIssue
 import com.example.demo.service.model.QualityReport
 import java.time.Instant
@@ -45,7 +46,7 @@ class DatasetControllerTest {
             rowsImported = 2,
             rowsRejected = 1,
         )
-        whenever(datasetService.importDataset(eq("bars.csv"), any(), any())).thenReturn(response)
+        whenever(datasetService.importDataset(eq("bars.csv"), any(), any(), eq(DatasetFrequency.MINUTE))).thenReturn(response)
         val file = MockMultipartFile(
             "file",
             "bars.csv",
@@ -53,16 +54,16 @@ class DatasetControllerTest {
             "contract,timestamp,open,high,low,close,volume".toByteArray(),
         )
 
-        mockMvc.perform(multipart("/datasets").file(file))
+        mockMvc.perform(multipart("/datasets").file(file).param("frequency", "minute"))
             .andExpect(status().isCreated)
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
             .andExpect(
                 content().json(
-                    """{"id":"6b8ebdb2-b60f-49a7-afcc-66f12cb37db3","filename":"bars.csv","status":"COMPLETED","rowsImported":2,"rowsRejected":1}""",
+                    """{"id":"6b8ebdb2-b60f-49a7-afcc-66f12cb37db3","filename":"bars.csv","status":"COMPLETED","rowsImported":2,"rowsRejected":1,"frequency":"minute"}""",
                 ),
             )
 
-        verify(datasetService).importDataset(eq("bars.csv"), eq("csv"), any())
+        verify(datasetService).importDataset(eq("bars.csv"), eq("csv"), any(), eq(DatasetFrequency.MINUTE))
     }
 
     @Test
@@ -74,33 +75,80 @@ class DatasetControllerTest {
             rowsImported = 2,
             rowsRejected = 0,
         )
-        whenever(datasetService.importDataset(eq("ESH25.parquet"), any(), any())).thenReturn(response)
+        whenever(datasetService.importDataset(eq("ESH25.parquet"), any(), any(), eq(DatasetFrequency.MINUTE))).thenReturn(response)
         val file = MockMultipartFile("file", "ESH25.parquet", "application/octet-stream", byteArrayOf(1, 2, 3))
 
-        mockMvc.perform(multipart("/datasets").file(file))
+        mockMvc.perform(multipart("/datasets").file(file).param("frequency", "minute"))
             .andExpect(status().isCreated)
 
-        verify(datasetService).importDataset(eq("ESH25.parquet"), eq("parquet"), any())
+        verify(datasetService).importDataset(eq("ESH25.parquet"), eq("parquet"), any(), eq(DatasetFrequency.MINUTE))
+    }
+
+    @Test
+    fun `accepts daily frequency and returns it in the import summary`() {
+        val response = DatasetImportResult(
+            id = UUID.fromString("6b8ebdb2-b60f-49a7-afcc-66f12cb37db3"),
+            filename = "daily.csv",
+            status = "COMPLETED",
+            rowsImported = 2,
+            rowsRejected = 0,
+            frequency = DatasetFrequency.DAILY,
+        )
+        whenever(datasetService.importDataset(eq("daily.csv"), any(), any(), eq(DatasetFrequency.DAILY)))
+            .thenReturn(response)
+        val file = MockMultipartFile(
+            "file",
+            "daily.csv",
+            "text/csv",
+            "contract,date,open,high,low,close,volume".toByteArray(),
+        )
+
+        mockMvc.perform(multipart("/datasets").file(file).param("frequency", "daily"))
+            .andExpect(status().isCreated)
+            .andExpect(
+                content().json(
+                    """{"id":"6b8ebdb2-b60f-49a7-afcc-66f12cb37db3","filename":"daily.csv","status":"COMPLETED","rowsImported":2,"rowsRejected":0,"frequency":"daily"}""",
+                ),
+            )
+
+        verify(datasetService).importDataset(eq("daily.csv"), eq("csv"), any(), eq(DatasetFrequency.DAILY))
     }
 
     @Test
     fun `rejects unsupported file extensions without calling service`() {
         val file = MockMultipartFile("file", "bars.xlsx", "application/octet-stream", byteArrayOf(1))
 
-        mockMvc.perform(multipart("/datasets").file(file))
+        mockMvc.perform(multipart("/datasets").file(file).param("frequency", "minute"))
             .andExpect(status().isBadRequest)
 
-        verify(datasetService, never()).importDataset(any(), any(), any())
+        verify(datasetService, never()).importDataset(any(), any(), any(), any())
     }
 
     @Test
     fun `rejects empty files without calling service`() {
         val file = MockMultipartFile("file", "bars.csv", "text/csv", byteArrayOf())
 
-        mockMvc.perform(multipart("/datasets").file(file))
+        mockMvc.perform(multipart("/datasets").file(file).param("frequency", "minute"))
             .andExpect(status().isBadRequest)
 
-        verify(datasetService, never()).importDataset(any(), any(), any())
+        verify(datasetService, never()).importDataset(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `requires a supported frequency before importing`() {
+        val file = MockMultipartFile(
+            "file",
+            "bars.csv",
+            "text/csv",
+            "contract,timestamp,open,high,low,close,volume".toByteArray(),
+        )
+
+        mockMvc.perform(multipart("/datasets").file(file))
+            .andExpect(status().isBadRequest)
+        mockMvc.perform(multipart("/datasets").file(file).param("frequency", "hourly"))
+            .andExpect(status().isBadRequest)
+
+        verify(datasetService, never()).importDataset(any(), any(), any(), any())
     }
 
     @Test
@@ -121,7 +169,7 @@ class DatasetControllerTest {
             .andExpect(status().isOk)
             .andExpect(
                 content().json(
-                    """[{"id":"6b8ebdb2-b60f-49a7-afcc-66f12cb37db3","filename":"bars.csv","status":"COMPLETED","rowsImported":2,"rowsRejected":1,"uploadedAt":"2026-11-09T05:00:00Z"}]""",
+                    """[{"id":"6b8ebdb2-b60f-49a7-afcc-66f12cb37db3","filename":"bars.csv","status":"COMPLETED","rowsImported":2,"rowsRejected":1,"uploadedAt":"2026-11-09T05:00:00Z","frequency":"minute"}]""",
                 ),
             )
 

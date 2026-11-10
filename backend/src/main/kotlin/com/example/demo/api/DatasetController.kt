@@ -6,6 +6,7 @@ import com.example.demo.api.dto.QualityIssueResponse
 import com.example.demo.api.dto.QualityResponse
 import com.example.demo.service.DatasetService
 import com.example.demo.service.QualityService
+import com.example.demo.service.model.DatasetFrequency
 import java.util.Locale
 import java.util.UUID
 import org.springframework.http.HttpStatus
@@ -34,7 +35,10 @@ class DatasetController(
     }
 
     @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
-    fun importDataset(@RequestParam("file") file: MultipartFile): ResponseEntity<ImportDatasetResponse> {
+    fun importDataset(
+        @RequestParam("file") file: MultipartFile,
+        @RequestParam("frequency") frequencyValue: String,
+    ): ResponseEntity<ImportDatasetResponse> {
         val originalFilename = file.originalFilename
             ?.substringAfterLast('/')
             ?.substringAfterLast('\\')
@@ -57,7 +61,9 @@ class DatasetController(
             )
         }
 
-        val result = datasetService.importDataset(originalFilename, extension, file.bytes)
+        val frequency = DatasetFrequency.entries.firstOrNull { it.name.equals(frequencyValue, ignoreCase = true) }
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Frequency must be 'minute' or 'daily'")
+        val result = datasetService.importDataset(originalFilename, extension, file.bytes, frequency)
         return ResponseEntity.status(HttpStatus.CREATED).body(
             ImportDatasetResponse(
                 id = result.id,
@@ -65,6 +71,7 @@ class DatasetController(
                 status = result.status,
                 rowsImported = result.rowsImported,
                 rowsRejected = result.rowsRejected,
+                frequency = result.frequency.name.lowercase(Locale.ROOT),
             ),
         )
     }
@@ -78,6 +85,7 @@ class DatasetController(
             rowsImported = dataset.rowsImported,
             rowsRejected = dataset.rowsRejected,
             uploadedAt = dataset.uploadedAt,
+            frequency = dataset.frequency.name.lowercase(Locale.ROOT),
         )
     }
 

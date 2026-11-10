@@ -61,6 +61,28 @@ class InsightsServiceTest {
     }
 
     @Test
+    fun `recommends repairing recurring gaps using the uploaded dataset frequency`() {
+        val repository = InMemoryDatasetRepository()
+        val datasets = DatasetService(repository)
+        val imported = datasets.importDataset(
+            "minute-bars.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:32:00,101,103,100,102,10
+                ESH25,2025-01-02T09:34:00,102,104,101,103,10
+            """.trimIndent().toByteArray(),
+        )
+
+        val insight = InsightsService(repository).getInsights(imported.id).single()
+
+        assertEquals("RECURRING_MISSING_TIMESTAMP", insight.code)
+        assertEquals("Recurring timestamp gaps", insight.title)
+        assertTrue(insight.recommendation.contains("minute dataset"))
+    }
+
+    @Test
     fun `returns no insights for a clean dataset`() {
         val repository = InMemoryDatasetRepository()
         val datasets = DatasetService(repository)

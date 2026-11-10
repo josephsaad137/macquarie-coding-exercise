@@ -1,6 +1,7 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
+import com.example.demo.service.model.DatasetFrequency
 import com.example.demo.service.model.Insight
 import java.util.UUID
 import org.springframework.http.HttpStatus
@@ -20,7 +21,7 @@ class InsightsService(
         val recurringIssues = issues.groupBy { it.code }
             .filterValues { it.size >= MIN_RECURRING_OCCURRENCES }
         val recurringInsights = recurringIssues.toSortedMap().map { (code, matches) ->
-            recurringInsight(code, matches.size, dataset.filename)
+            recurringInsight(code, matches.size, dataset.filename, dataset.frequency)
         }
         val isolatedIssueCount = issues.count { it.code !in recurringIssues.keys }
         val isolatedInsights = if (isolatedIssueCount > 0) {
@@ -28,9 +29,9 @@ class InsightsService(
                 Insight(
                     code = "DATA_QUALITY_ISSUES",
                     title = "Data quality issues detected",
-                    description = "$isolatedIssueCount isolated invalid or duplicate records were found in ${dataset.filename}.",
-                    recommendation = "Review the affected rows and add source-side validation for required fields, OHLC relationships, and non-negative volume.",
-                    evidence = listOf("$isolatedIssueCount rejected row(s) require review."),
+                    description = "$isolatedIssueCount isolated data quality finding(s) were found in ${dataset.filename}.",
+                    recommendation = "Review the affected records and validate required fields, OHLC relationships, non-negative volume, and expected timestamps.",
+                    evidence = listOf("$isolatedIssueCount finding(s) require review."),
                 ),
             )
         } else {
@@ -40,25 +41,33 @@ class InsightsService(
         return recurringInsights + isolatedInsights
     }
 
-    private fun recurringInsight(code: String, count: Int, filename: String): Insight {
+    private fun recurringInsight(
+        code: String,
+        count: Int,
+        filename: String,
+        frequency: DatasetFrequency,
+    ): Insight {
         val guidance = when (code) {
             "DUPLICATE_BAR" -> "Deduplicate records by contract and timestamp before ingestion."
             "INVALID_OHLC" -> "Validate that high is at least open, close, and low, and low is at most open, close, and high."
             "INVALID_VOLUME" -> "Require volume to be a non-negative integer before publishing the file."
+            "MISSING_TIMESTAMP" -> "Restore missing bars or verify that the ${frequency.name.lowercase()} dataset has complete timestamp coverage."
             else -> "Validate the source records against the required market-data schema before ingestion."
         }
         val title = when (code) {
             "DUPLICATE_BAR" -> "Recurring duplicate bars"
             "INVALID_OHLC" -> "Recurring invalid OHLC values"
             "INVALID_VOLUME" -> "Recurring invalid volumes"
+            "MISSING_TIMESTAMP" -> "Recurring timestamp gaps"
             else -> "Recurring malformed records"
         }
+
         return Insight(
             code = "RECURRING_$code",
             title = title,
-            description = "$count rows in $filename share the $code quality issue.",
+            description = "$count occurrences of $code were found in $filename.",
             recommendation = guidance,
-            evidence = listOf("$count rows were rejected for $code."),
+            evidence = listOf("$count finding(s) were recorded for $code."),
         )
     }
 

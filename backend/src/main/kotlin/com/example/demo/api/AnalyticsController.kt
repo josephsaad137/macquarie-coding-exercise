@@ -5,6 +5,7 @@ import com.example.demo.api.dto.RollingVwapResponse
 import com.example.demo.service.AnalyticsService
 import java.time.LocalDate
 import java.util.Locale
+import java.util.UUID
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
@@ -20,13 +21,14 @@ class AnalyticsController(
 ) {
     @GetMapping("/daily-bars")
     fun dailyBars(
+        @RequestParam datasetId: UUID,
         @RequestParam(required = false) contract: String?,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) from: LocalDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
     ): List<DailyBarResponse> {
         validateDateRange(from, to)
         val normalizedContract = normalizeContract(contract)
-        return analyticsService.dailyBars(normalizedContract, from, to).map { bar ->
+        return analyticsService.dailyBars(datasetId, normalizedContract, from, to).map { bar ->
             DailyBarResponse(
                 contract = bar.contract,
                 date = bar.date,
@@ -41,13 +43,14 @@ class AnalyticsController(
 
     @GetMapping("/vwap")
     fun rollingVwap(
+        @RequestParam datasetId: UUID,
         @RequestParam(required = false) contract: String?,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) from: LocalDate,
         @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) to: LocalDate,
     ): List<RollingVwapResponse> {
         validateDateRange(from, to)
         val normalizedContract = normalizeContract(contract)
-        return analyticsService.rollingVwap(normalizedContract, from, to).map { point ->
+        return analyticsService.rollingVwap(datasetId, normalizedContract, from, to).map { point ->
             RollingVwapResponse(
                 contract = point.contract,
                 timestamp = point.timestamp,

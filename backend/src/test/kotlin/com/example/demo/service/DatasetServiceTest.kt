@@ -1,6 +1,7 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
+import com.example.demo.service.model.DatasetFrequency
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.jupiter.api.Test
@@ -44,6 +45,90 @@ class DatasetServiceTest {
         assertEquals(1, imported.rowsImported)
         assertEquals(0, imported.rowsRejected)
         assertEquals("COMPLETED", imported.status)
+    }
+
+    @Test
+    fun `reports missing minute bars without counting them as rejected rows`() {
+        val imported = service.importDataset(
+            "minute-bars.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:33:00,101,103,100,102,10
+            """.trimIndent().toByteArray(),
+            DatasetFrequency.MINUTE,
+        )
+
+        assertEquals("COMPLETED_WITH_WARNINGS", imported.status)
+        assertEquals(2, imported.rowsImported)
+        assertEquals(0, imported.rowsRejected)
+        val gap = service.qualityIssues(imported.id).single()
+        assertEquals("MISSING_TIMESTAMP", gap.code)
+        assertEquals(null, gap.rowNumber)
+        assertEquals("ESH25", gap.contract)
+        assertEquals("2025-01-02T09:31", gap.timestamp.toString())
+        assertTrue(gap.message.contains("2 missing minute bar(s)"))
+    }
+
+    @Test
+    fun `reports missing calendar dates in daily datasets`() {
+        val imported = service.importDataset(
+            "daily-bars.csv",
+            "csv",
+            """
+                contract,date,open,high,low,close,volume
+                ESH25,2025-01-03,100,102,99,101,10
+                ESH25,2025-01-06,101,103,100,102,10
+            """.trimIndent().toByteArray(),
+            DatasetFrequency.DAILY,
+        )
+
+        val gap = service.qualityIssues(imported.id).single()
+        assertEquals("MISSING_TIMESTAMP", gap.code)
+        assertEquals("2025-01-04T00:00", gap.timestamp.toString())
+        assertTrue(gap.message.contains("2 missing daily bar(s)"))
+        assertEquals(0, imported.rowsRejected)
+    }
+
+    @Test
+    fun `checks each contract independently and ignores rejected duplicate timestamps`() {
+        val imported = service.importDataset(
+            "minute-bars.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESM25,2025-01-02T09:30:00,200,202,199,201,10
+                ESM25,2025-01-02T09:31:00,201,203,200,202,10
+                ESH25,2025-01-02T09:32:00,102,104,101,103,10
+                ESH25,2025-01-02T09:32:00,102,104,101,103,10
+            """.trimIndent().toByteArray(),
+            DatasetFrequency.MINUTE,
+        )
+
+        assertEquals(1, imported.rowsRejected)
+        val issues = service.qualityIssues(imported.id)
+        assertEquals(listOf("DUPLICATE_BAR", "MISSING_TIMESTAMP"), issues.map { it.code })
+        assertEquals("ESH25", issues.last().contract)
+        assertTrue(issues.last().message.contains("1 missing minute bar(s)"))
+    }
+
+    @Test
+    fun `does not report gaps when timestamps are consecutive at the declared frequency`() {
+        val imported = service.importDataset(
+            "minute-bars.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-02T09:30:00,100,102,99,101,10
+                ESH25,2025-01-02T09:31:00,101,103,100,102,10
+            """.trimIndent().toByteArray(),
+            DatasetFrequency.MINUTE,
+        )
+
+        assertEquals("COMPLETED", imported.status)
+        assertTrue(service.qualityIssues(imported.id).isEmpty())
     }
 
     @Test
@@ -112,11 +197,17 @@ class DatasetServiceTest {
         )
         assertTrue(Files.exists(path), "Expected sample Parquet file at $path")
 
-        val imported = service.importDataset(path.fileName.toString(), "parquet", Files.readAllBytes(path))
+        val imported = service.importDataset(
+            path.fileName.toString(),
+            "parquet",
+            Files.readAllBytes(path),
+            DatasetFrequency.DAILY,
+        )
 
-        assertEquals("COMPLETED", imported.status)
+        assertEquals("COMPLETED_WITH_WARNINGS", imported.status)
         assertTrue(imported.rowsImported > 0)
         assertEquals(0, imported.rowsRejected)
+        assertTrue(service.qualityIssues(imported.id).any { it.code == "MISSING_TIMESTAMP" })
         assertNotNull(imported.id)
     }
 
@@ -133,10 +224,16 @@ class DatasetServiceTest {
         )
         assertTrue(Files.exists(path), "Expected sample Parquet file at $path")
 
-        val imported = service.importDataset(path.fileName.toString(), "parquet", Files.readAllBytes(path))
+        val imported = service.importDataset(
+            path.fileName.toString(),
+            "parquet",
+            Files.readAllBytes(path),
+            DatasetFrequency.MINUTE,
+        )
 
-        assertEquals("COMPLETED", imported.status)
+        assertEquals("COMPLETED_WITH_WARNINGS", imported.status)
         assertTrue(imported.rowsImported > 0)
         assertEquals(0, imported.rowsRejected)
+        assertTrue(service.qualityIssues(imported.id).any { it.code == "MISSING_TIMESTAMP" })
     }
 }
