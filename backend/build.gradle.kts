@@ -20,10 +20,20 @@ repositories {
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	implementation("org.apache.commons:commons-csv:1.14.1")
+	implementation("org.apache.hadoop:hadoop-common:3.3.6") {
+		exclude(group = "org.slf4j", module = "slf4j-reload4j")
+	}
+	implementation("org.apache.hadoop:hadoop-mapreduce-client-core:3.3.6") {
+		exclude(group = "org.slf4j", module = "slf4j-reload4j")
+	}
+	implementation("org.apache.parquet:parquet-avro:1.15.2")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
+	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+	testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
