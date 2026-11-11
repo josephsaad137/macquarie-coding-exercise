@@ -2,14 +2,16 @@ package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
 import com.example.demo.persistence.StoredDataset
+import com.example.demo.service.model.BarKey
+import com.example.demo.service.model.BarParseResult
 import com.example.demo.service.model.DatasetFrequency
 import com.example.demo.service.model.DatasetImportResult
 import com.example.demo.service.model.DatasetSummary
+import com.example.demo.service.model.ImportedRows
 import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.QualityIssue
-import java.io.EOFException
+import com.example.demo.service.model.TabularData
 import java.io.IOException
-import java.nio.ByteBuffer
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -19,11 +21,6 @@ import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
-import org.apache.avro.generic.GenericRecord
-import org.apache.parquet.avro.AvroParquetReader
-import org.apache.parquet.conf.PlainParquetConfiguration
-import org.apache.parquet.io.InputFile
-import org.apache.parquet.io.SeekableInputStream
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -44,6 +41,8 @@ class DatasetService(
             "close" to listOf("close", "c"),
             "volume" to listOf("volume", "v"),
         )
+        val csvFileReader = CsvFileReader()
+        val parquetFileReader = ParquetFileReader()
     }
 
     fun importDataset(
@@ -134,20 +133,50 @@ class DatasetService(
         }
 
     private fun processCsv(content: ByteArray): ImportedRows {
-        val records = parseCsv(content.toString(Charsets.UTF_8)).iterator()
-        val headers = records.asSequence().firstOrNull { row -> row.any(String::isNotBlank) }
-            ?: throw badRequest("The CSV file does not contain a header")
-        val columns = resolveColumns(headers)
+        return try {
+            csvFileReader.read(content) { table ->
+                if (table.headers.isEmpty()) throw badRequest("The CSV file does not contain a header")
+                processRows(table, initialRowNumber = 1L)
+            }
+        } catch (exception: ResponseStatusException) {
+            throw exception
+        } catch (_: IOException) {
+            throw badRequest("The CSV file could not be read")
+        } catch (_: RuntimeException) {
+            throw badRequest("The CSV file could not be read")
+        }
+    }
+
+    private fun processParquet(content: ByteArray): ImportedRows {
+        return try {
+            parquetFileReader.read(content) { table ->
+                if (table.headers.isEmpty()) {
+                    ImportedRows(emptyList(), emptyList(), 0)
+                } else {
+                    processRows(table, initialRowNumber = 0L)
+                }
+            }
+        } catch (exception: ResponseStatusException) {
+            throw exception
+        } catch (_: IOException) {
+            throw badRequest("The uploaded Parquet file could not be read")
+        } catch (_: RuntimeException) {
+            throw badRequest("The uploaded Parquet file could not be read")
+        }
+    }
+
+    private fun processRows(table: TabularData, initialRowNumber: Long): ImportedRows {
+        val columns = resolveColumns(table.headers)
         val seenBars = linkedMapOf<BarKey, MarketDataBar>()
         val imported = mutableListOf<MarketDataBar>()
         val issues = mutableListOf<QualityIssue>()
         var rowsRejected = 0
-        var rowNumber = 1L
+        var rowNumber = initialRowNumber
 
-        for (row in records.asSequence()) {
+        for (row in table.rows) {
             if (row.all(String::isBlank)) continue
             rowNumber++
-            if (row.size != headers.size) {
+            if (row.size != table.headers.size) {
                 rowsRejected++
                 issues.add(
                     QualityIssue(
@@ -155,7 +184,7 @@ class DatasetService(
                         contract = row.getOrNull(columns.getValue("contract"))?.trim()?.uppercase(Locale.ROOT),
                         timestamp = row.getOrNull(columns.getValue("timestamp"))?.let(::parseTimestamp),
                         code = "MALFORMED_RECORD",
-                        message = "Record has ${row.size} fields; expected ${headers.size}",
+                        message = "Record has ${row.size} fields; expected ${table.headers.size}",
                     ),
                 )
                 continue
@@ -180,83 +209,6 @@ class DatasetService(
             }
         }
         return ImportedRows(imported, issues, rowsRejected)
-    }
-
-    private fun processParquet(content: ByteArray): ImportedRows {
-        try {
-            val reader = AvroParquetReader.builder<GenericRecord>(
-                ByteArrayParquetInputFile(content),
-                PlainParquetConfiguration(),
-            ).build()
-            reader.use { parquetReader ->
-                val firstRecord = parquetReader.read() ?: return ImportedRows(emptyList(), emptyList(), 0)
-                val headers = firstRecord.schema.fields.map { it.name() }
-                val columns = resolveColumns(headers)
-                val seenBars = linkedMapOf<BarKey, MarketDataBar>()
-                val imported = mutableListOf<MarketDataBar>()
-                val issues = mutableListOf<QualityIssue>()
-                var rowsRejected = 0
-                var rowNumber = 0L
-
-                fun inspect(record: GenericRecord) {
-                    rowNumber++
-                    val values = columns.mapValues { (_, index) ->
-                        val fieldName = headers[index]
-                        val value = record.get(fieldName) ?: return@mapValues ""
-                        val logicalType = record.schema.getField(fieldName).schema().logicalType?.name
-                        val nanosPerUnit = when {
-                            logicalType == "timestamp-micros" || logicalType == "local-timestamp-micros" -> 1_000L
-                            logicalType == "timestamp-nanos" || logicalType == "local-timestamp-nanos" -> 1L
-                            // This naive Chicago wall-clock field is stored as epoch nanoseconds.
-                            normalizeHeader(fieldName) == "timestampchicagowall" -> 1L
-                            else -> null
-                        }
-                        if (nanosPerUnit != null) {
-                            value.toString().toLongOrNull()?.let { timestampUnits ->
-                                val unitsPerSecond = 1_000_000_000L / nanosPerUnit
-                                LocalDateTime.ofEpochSecond(
-                                    Math.floorDiv(timestampUnits, unitsPerSecond),
-                                    (Math.floorMod(timestampUnits, unitsPerSecond) * nanosPerUnit).toInt(),
-                                    ZoneOffset.UTC,
-                                ).toString()
-                            } ?: value.toString().trim()
-                        } else {
-                            value.toString().trim()
-                        }
-                    }
-                    when (val parsed = parseBar(values)) {
-                        is BarParseResult.Invalid -> {
-                            rowsRejected++
-                            issues.add(qualityIssue(rowNumber, values, parsed.code, parsed.message))
-                        }
-                        is BarParseResult.Valid -> {
-                            val key = BarKey(parsed.bar.contract, parsed.bar.timestamp)
-                            val existingBar = seenBars[key]
-                            if (existingBar != null) {
-                                rowsRejected++
-                                issues.add(duplicateIssue(rowNumber, values, existingBar, parsed.bar))
-                            } else {
-                                seenBars[key] = parsed.bar
-                                imported.add(parsed.bar)
-                            }
-                        }
-                    }
-                }
-
-                inspect(firstRecord)
-                while (true) {
-                    val record = parquetReader.read() ?: break
-                    inspect(record)
-                }
-                return ImportedRows(imported, issues, rowsRejected)
-            }
-        } catch (exception: ResponseStatusException) {
-            throw exception
-        } catch (_: IOException) {
-            throw badRequest("The uploaded Parquet file could not be read")
-        } catch (_: RuntimeException) {
-            throw badRequest("The uploaded Parquet file could not be read")
-        }
     }
 
     private fun resolveColumns(headers: List<String>): Map<String, Int> {
@@ -351,112 +303,5 @@ class DatasetService(
 
     private fun normalizeHeader(name: String): String = name.trim().lowercase().replace(Regex("[^a-z0-9]"), "")
 
-    private fun parseCsv(csv: String): Sequence<List<String>> = sequence {
-        var row = mutableListOf<String>()
-        val field = StringBuilder()
-        var insideQuotes = false
-        var index = 0
-
-        while (index < csv.length) {
-            val character = csv[index]
-            when {
-                character == '"' && insideQuotes && index + 1 < csv.length && csv[index + 1] == '"' -> {
-                    field.append('"')
-                    index++
-                }
-                character == '"' -> insideQuotes = !insideQuotes
-                character == ',' && !insideQuotes -> {
-                    row.add(field.toString())
-                    field.setLength(0)
-                }
-                (character == '\n' || character == '\r') && !insideQuotes -> {
-                    row.add(field.toString())
-                    field.setLength(0)
-                    if (row.any(String::isNotBlank)) yield(row)
-                    row = mutableListOf()
-                    if (character == '\r' && index + 1 < csv.length && csv[index + 1] == '\n') index++
-                }
-                else -> field.append(character)
-            }
-            index++
-        }
-
-        if (insideQuotes) throw badRequest("The CSV file contains an unterminated quoted field")
-        if (field.isNotEmpty() || row.isNotEmpty()) {
-            row.add(field.toString())
-            if (row.any(String::isNotBlank)) yield(row)
-        }
-    }
-
-    private fun badRequest(message: String): ResponseStatusException =
-        ResponseStatusException(HttpStatus.BAD_REQUEST, message)
-
-    private data class BarKey(val contract: String, val timestamp: LocalDateTime)
-
-    private sealed interface BarParseResult {
-        data class Valid(val bar: MarketDataBar) : BarParseResult
-        data class Invalid(val code: String, val message: String) : BarParseResult
-    }
-
-    private data class ImportedRows(val bars: List<MarketDataBar>, val issues: List<QualityIssue>, val rowsRejected: Int)
-
-    private class ByteArrayParquetInputFile(private val content: ByteArray) : InputFile {
-        override fun getLength(): Long = content.size.toLong()
-
-        override fun newStream(): SeekableInputStream = object : SeekableInputStream() {
-            private var position = 0
-
-            override fun getPos(): Long = position.toLong()
-
-            override fun seek(newPosition: Long) {
-                if (newPosition < 0 || newPosition > content.size) {
-                    throw IOException("Invalid Parquet stream position: $newPosition")
-                }
-                position = newPosition.toInt()
-            }
-
-            override fun read(): Int {
-                if (position >= content.size) return -1
-                return content[position++].toInt() and 0xff
-            }
-
-            override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
-                if (offset < 0 || length < 0 || length > bytes.size - offset) {
-                    throw IndexOutOfBoundsException()
-                }
-                if (length == 0) return 0
-                if (position >= content.size) return -1
-                val count = minOf(length, content.size - position)
-                content.copyInto(bytes, offset, position, position + count)
-                position += count
-                return count
-            }
-
-            override fun readFully(bytes: ByteArray) = readFully(bytes, 0, bytes.size)
-
-            override fun readFully(bytes: ByteArray, offset: Int, length: Int) {
-                var copied = 0
-                while (copied < length) {
-                    val count = read(bytes, offset + copied, length - copied)
-                    if (count < 0) throw EOFException()
-                    copied += count
-                }
-            }
-
-            override fun read(buffer: ByteBuffer): Int {
-                if (!buffer.hasRemaining()) return 0
-                if (position >= content.size) return -1
-                val count = minOf(buffer.remaining(), content.size - position)
-                buffer.put(content, position, count)
-                position += count
-                return count
-            }
-
-            override fun readFully(buffer: ByteBuffer) {
-                while (buffer.hasRemaining()) {
-                    if (read(buffer) < 0) throw EOFException()
-                }
-            }
-        }
-    }
+    private fun badRequest(message: String) = ResponseStatusException(HttpStatus.BAD_REQUEST, message)
 }

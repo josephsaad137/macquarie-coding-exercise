@@ -20,6 +20,7 @@ repositories {
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	implementation("org.apache.commons:commons-csv:1.14.1")
 	implementation("org.apache.hadoop:hadoop-common:3.3.6") {
 		exclude(group = "org.slf4j", module = "slf4j-reload4j")
 	}

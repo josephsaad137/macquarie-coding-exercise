@@ -29,7 +29,10 @@ backend stops.
 - **API:** `DatasetController`, `AnalyticsController`, and
   `InsightsController` validate HTTP inputs and map service models to response
   DTOs.
-- **Services:** `DatasetService` parses and validates imports;
+- **Services:** `DatasetService` validates imported records and coordinates
+  ingestion; `CsvFileReader` uses Apache Commons CSV, while `ParquetFileReader`
+  uses Apache Parquet/Avro. Both readers stream records into the same
+  validation and quality logic;
   `QualityService` pages quality findings; `AnalyticsService` calculates daily
   bars and rolling VWAP; `InsightsService` generates deterministic
   recommendations.
