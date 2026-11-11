@@ -97,3 +97,18 @@ Run the backend unit and integration test suites:
 cd backend
 ./gradlew test
 ```
+
+Run the frontend component tests, lint, and production build:
+
+```sh
+cd frontend
+npm test
+npm run lint
+npm run build
+```
+
+The React UI is organized in `frontend/src/components/`, with component tests
+colocated beside the components. The app-level test is in
+`frontend/src/App.test.tsx`. During development, Vite proxies `/api` requests
+to `http://localhost:8080`. Set `VITE_API_BASE_URL` to use a different API
+base URL.
