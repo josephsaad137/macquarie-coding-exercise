@@ -22,15 +22,16 @@ cd backend
 In another terminal, start the frontend:
 
 ```sh
-cd frontend/vite-project
+cd frontend
 npm install
 npm run dev
 ```
 
 The backend API is available at `http://localhost:8080`; Vite serves the
-frontend at the address printed by its dev server. The frontend is currently
-the Vite starter scaffold; use the backend API directly until its dashboard and
-API client are connected.
+frontend at the address printed by its dev server. The dashboard proxies its
+API requests through Vite to the local backend. It supports CSV and Parquet
+imports, dataset selection, contract/date filters, daily OHLCV and rolling
+VWAP charts, quality findings, and rule-based insights.
 
 ## Import a dataset
 
@@ -96,3 +97,18 @@ Run the backend unit and integration test suites:
 cd backend
 ./gradlew test
 ```
+
+Run the frontend component tests, lint, and production build:
+
+```sh
+cd frontend
+npm test
+npm run lint
+npm run build
+```
+
+The React UI is organized in `frontend/src/components/`, with component tests
+colocated beside the components. The app-level test is in
+`frontend/src/App.test.tsx`. During development, Vite proxies `/api` requests
+to `http://localhost:8080`. Set `VITE_API_BASE_URL` to use a different API
+base URL.

@@ -3,14 +3,17 @@
 ## Current system
 
 The project is a local modular application with a React/Vite frontend and a
-Spring Boot/Kotlin REST API. The backend is implemented; the frontend is still
-the default Vite starter and is not yet connected to the API.
+Spring Boot/Kotlin REST API.
 
 ```text
 Browser
-  React + TypeScript + Vite (localhost:5173, starter UI)
+  React + TypeScript + Vite (localhost:5173)
        │
-       │ HTTP requests (frontend API client/proxy not implemented)
+       ├── App.tsx (dataset selection, API state, and page composition)
+       ├── components/ (sidebar, import dialog, analytics, quality, insights)
+       └── api.ts (typed HTTP client)
+       │
+       │ /api requests (Vite development proxy)
        ▼
   Spring Boot + Kotlin REST API (localhost:8080)
        │
@@ -107,13 +110,25 @@ parameters return `400`.
 
 ## Frontend and local development
 
-The frontend is currently unimplemented beyond the Vite starter. It does not
-yet provide the dashboard, typed API client, or development proxy. The frontend
-and backend can be started separately:
+`App.tsx` coordinates dataset loading and selection, imports, analytics and
+quality state, and composes UI from focused components in
+`frontend/src/components/`. The component directory contains the workspace
+sidebar, top bar, import dialog, market overview, quality report, charts,
+tables, and insight cards/panel. Component tests live beside their components;
+`frontend/src/App.test.tsx` covers the app-level empty-workspace flow.
+
+The typed API client supports dataset imports and selection, paged quality
+findings, insights, daily OHLCV bars, and rolling VWAP. The dashboard filters
+analytics by contract and inclusive date range, and displays daily bars, VWAP,
+quality findings, and rule-based recommendations. In development, Vite proxies
+`/api` to `http://localhost:8080`, avoiding browser CORS configuration for the
+local workflow. `VITE_API_BASE_URL` can override the frontend API base URL.
+
+Start the backend and frontend separately:
 
 ```sh
 cd backend && ./gradlew bootRun
-cd frontend/vite-project && npm run dev
+cd frontend && npm install && npm run dev
 ```
 
 See [README.md](./README.md) for runtime requirements, API examples, and test
@@ -130,11 +145,13 @@ backend tests with:
 cd backend && ./gradlew test
 ```
 
+Frontend components use Vitest, jsdom, and Testing Library. From `frontend/`,
+run `npm test` for component and app tests, `npm run lint` for ESLint, and
+`npm run build` for TypeScript checking and a production Vite build.
+
 ## Current limitations
 
 - Repository data is in-memory and does not survive a backend restart.
-- The frontend dashboard and frontend-to-backend communication are not
-  implemented.
 - Gap checking follows the declared cadence literally; it does not account for
   exchange sessions, holidays, or periods when no bar was expected.
 - VWAP is a bar-based approximation, not trade-level VWAP.
