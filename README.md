@@ -22,7 +22,7 @@ cd backend
 In another terminal, start the frontend:
 
 ```sh
-cd frontend/vite-project
+cd frontend
 npm install
 npm run dev
 ```

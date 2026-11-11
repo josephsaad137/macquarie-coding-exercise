@@ -25,5 +25,9 @@ different API base URL.
 
 ```sh
 npm run lint
+npm test
 npm run build
 ```
+
+Reusable dashboard UI lives in `src/components/`, with component tests
+colocated beside each component.
