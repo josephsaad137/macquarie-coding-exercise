@@ -28,9 +28,10 @@ npm run dev
 ```
 
 The backend API is available at `http://localhost:8080`; Vite serves the
-frontend at the address printed by its dev server. The frontend is currently
-the Vite starter scaffold; use the backend API directly until its dashboard and
-API client are connected.
+frontend at the address printed by its dev server. The dashboard proxies its
+API requests through Vite to the local backend. It supports CSV and Parquet
+imports, dataset selection, contract/date filters, daily OHLCV and rolling
+VWAP charts, quality findings, and rule-based insights.
 
 ## Import a dataset
 

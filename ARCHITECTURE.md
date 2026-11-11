@@ -3,14 +3,13 @@
 ## Current system
 
 The project is a local modular application with a React/Vite frontend and a
-Spring Boot/Kotlin REST API. The backend is implemented; the frontend is still
-the default Vite starter and is not yet connected to the API.
+Spring Boot/Kotlin REST API.
 
 ```text
 Browser
-  React + TypeScript + Vite (localhost:5173, starter UI)
+  React + TypeScript + Vite (localhost:5173, dashboard and typed API client)
        │
-       │ HTTP requests (frontend API client/proxy not implemented)
+       │ /api requests (Vite development proxy)
        ▼
   Spring Boot + Kotlin REST API (localhost:8080)
        │
@@ -107,9 +106,13 @@ parameters return `400`.
 
 ## Frontend and local development
 
-The frontend is currently unimplemented beyond the Vite starter. It does not
-yet provide the dashboard, typed API client, or development proxy. The frontend
-and backend can be started separately:
+The React dashboard uses a typed API client for dataset imports, selection,
+quality findings, insights, daily OHLCV bars, and rolling VWAP. Users can filter
+analytics by contract and inclusive date range. In development, Vite proxies
+`/api` to the backend at `http://localhost:8080`, avoiding browser CORS
+configuration for the local workflow.
+
+Start the backend and frontend separately:
 
 ```sh
 cd backend && ./gradlew bootRun
