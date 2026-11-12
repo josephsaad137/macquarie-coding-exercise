@@ -19,6 +19,8 @@ function App() {
   const [appliedFilters, setAppliedFilters] = useState<AnalyticsFilters>(EMPTY_FILTERS)
   const [bars, setBars] = useState<DailyBar[]>([])
   const [vwap, setVwap] = useState<VwapPoint[]>([])
+  const [dailyBarCount, setDailyBarCount] = useState(0)
+  const [vwapPointCount, setVwapPointCount] = useState(0)
   const [issues, setIssues] = useState<QualityIssue[]>([])
   const [issueCount, setIssueCount] = useState(0)
   const [issuePage, setIssuePage] = useState(0)
@@ -101,6 +103,8 @@ function App() {
         if (!active) return
         setBars(dailyResult.items)
         setVwap(vwapResult.items)
+        setDailyBarCount(dailyResult.totalElements)
+        setVwapPointCount(vwapResult.totalElements)
         setLoadedAnalyticsKey(analyticsKey)
       })
       .catch((error: unknown) => {
@@ -169,6 +173,8 @@ function App() {
               rejectionRate={rejectionRate}
               issueCount={issueCount}
               issueTypes={issueTypes}
+              dailyBarCount={dailyBarCount}
+              vwapPointCount={vwapPointCount}
               bars={bars}
               vwap={vwap}
               insights={insights}

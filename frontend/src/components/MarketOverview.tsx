@@ -21,6 +21,8 @@ interface MarketOverviewProps {
   rejectionRate: string
   issueCount: number
   issueTypes: number
+  dailyBarCount: number
+  vwapPointCount: number
   bars: DailyBar[]
   vwap: VwapPoint[]
   insights: Insight[]
@@ -41,6 +43,8 @@ export function MarketOverview({
   rejectionRate,
   issueCount,
   issueTypes,
+  dailyBarCount,
+  vwapPointCount,
   bars,
   vwap,
   insights,
@@ -78,7 +82,7 @@ export function MarketOverview({
             <StatCard title="ROWS IMPORTED" value={formatNumber(importedRows)} note={dataset.frequency === 'minute' ? 'Minute frequency' : 'Daily frequency'} icon="▤" tone="blue" />
             <StatCard title="QUALITY FINDINGS" value={formatNumber(issueCount)} note={issueCount === 0 ? 'No issues identified' : `${issueTypes} issue types on this page`} icon="⌁" tone="amber" />
             <StatCard title="ROWS REJECTED" value={formatNumber(rejectedRows)} note={rejectionRate} icon="↗" tone="rose" />
-            <StatCard title="DAILY BARS" value={formatNumber(bars.length)} note={analyticsLoading ? 'Updating analytics…' : `${formatNumber(vwap.length)} VWAP points`} icon="⌗" tone="green" />
+            <StatCard title="DAILY BARS" value={formatNumber(dailyBarCount)} note={analyticsLoading ? 'Updating analytics…' : `${formatNumber(vwapPointCount)} VWAP points`} icon="⌗" tone="green" />
           </section>}
 
           <section className="panel filter-panel">

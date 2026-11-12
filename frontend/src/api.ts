@@ -86,6 +86,11 @@ function queryString(params: Record<string, string | number | undefined>): strin
   return query.toString()
 }
 
+const ANALYTICS_PAGE_SIZE = 500
+
+const analyticsPage = <T>(path: string) =>
+  request<Page<T>>(`${path}&page=0&size=${ANALYTICS_PAGE_SIZE}`)
+
 export const api = {
   listDatasets: () => request<Dataset[]>('/datasets'),
 
@@ -103,20 +108,18 @@ export const api = {
     request<Insight[]>(`/insights?${queryString({ datasetId })}`),
 
   dailyBars: (datasetId: string, contract: string, from: string, to: string) =>
-    request<Page<DailyBar>>(`/analytics/daily-bars?${queryString({
+    analyticsPage<DailyBar>(`/analytics/daily-bars?${queryString({
       datasetId,
       contract: contract || undefined,
       from: from || '0001-01-01',
       to: to || '9999-12-31',
-      size: 500,
     })}`),
 
   vwap: (datasetId: string, contract: string, from: string, to: string) =>
-    request<Page<VwapPoint>>(`/analytics/vwap?${queryString({
+    analyticsPage<VwapPoint>(`/analytics/vwap?${queryString({
       datasetId,
       contract: contract || undefined,
       from: from || '0001-01-01',
       to: to || '9999-12-31',
-      size: 500,
     })}`),
 }

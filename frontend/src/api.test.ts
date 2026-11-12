@@ -51,23 +51,45 @@ describe('api client', () => {
   })
 
   it('applies date defaults and omits an empty contract for daily bars', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ items: [] })))
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ totalElements: 0, page: 0, size: 500, items: [] })))
 
     await api.dailyBars('dataset-1', '', '', '')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/analytics/daily-bars?datasetId=dataset-1&from=0001-01-01&to=9999-12-31&size=500',
+      '/api/analytics/daily-bars?datasetId=dataset-1&from=0001-01-01&to=9999-12-31&page=0&size=500',
+      undefined,
+    )
+  })
+
+  it('keeps large daily-bar chart requests bounded to one page', async () => {
+    const firstPage = {
+      totalElements: 501,
+      page: 0,
+      size: 500,
+      items: Array.from({ length: 500 }, (_, index) => ({ date: `day-${index}` })),
+    }
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(firstPage)))
+
+    const result = await api.dailyBars('dataset-1', '', '', '')
+
+    expect(result.totalElements).toBe(501)
+    expect(result.items).toHaveLength(500)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/analytics/daily-bars?datasetId=dataset-1&from=0001-01-01&to=9999-12-31&page=0&size=500',
       undefined,
     )
   })
 
   it('includes contract and date filters for VWAP requests', async () => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ items: [] })))
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ totalElements: 100000, page: 0, size: 500, items: [] })))
 
-    await api.vwap('dataset-1', 'ESH25', '2025-01-01', '2025-01-31')
+    const result = await api.vwap('dataset-1', 'ESH25', '2025-01-01', '2025-01-31')
 
+    expect(result.totalElements).toBe(100000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/analytics/vwap?datasetId=dataset-1&contract=ESH25&from=2025-01-01&to=2025-01-31&size=500',
+      '/api/analytics/vwap?datasetId=dataset-1&contract=ESH25&from=2025-01-01&to=2025-01-31&page=0&size=500',
       undefined,
     )
   })

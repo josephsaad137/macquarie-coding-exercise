@@ -13,6 +13,15 @@ class DatasetServiceTest {
     private val service = DatasetService(InMemoryDatasetRepository())
 
     @Test
+    fun `rejects an empty Parquet dataset`() {
+        val exception = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+            service.importDataset("empty.parquet", "parquet", byteArrayOf())
+        }
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.statusCode)
+    }
+
+    @Test
     fun `imports valid CSV rows and reports malformed and duplicate rows`() {
         val csv = """
             Contract,Timestamp,Open,High,Low,Close,Volume

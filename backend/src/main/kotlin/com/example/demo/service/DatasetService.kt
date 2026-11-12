@@ -151,7 +151,7 @@ class DatasetService(
         return try {
             parquetFileReader.read(content) { table ->
                 if (table.headers.isEmpty()) {
-                    ImportedRows(emptyList(), emptyList(), 0)
+                    throw badRequest("The Parquet file contains no records or schema")
                 } else {
                     processRows(table, initialRowNumber = 0L)
                 }
