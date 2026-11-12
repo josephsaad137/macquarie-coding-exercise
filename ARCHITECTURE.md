@@ -139,15 +139,19 @@ commands.
 Backend unit tests cover parsing, quality rules, services, and calculations.
 The Spring integration test exercises dataset import through the API and checks
 that quality, insights, and analytics read the saved repository data. Run all
-backend tests with:
+backend tests and generate a Kover coverage report with:
 
 ```sh
 cd backend && ./gradlew test
+./gradlew koverHtmlReport
 ```
 
-Frontend components use Vitest, jsdom, and Testing Library. From `frontend/`,
-run `npm test` for component and app tests, `npm run lint` for ESLint, and
-`npm run build` for TypeScript checking and a production Vite build.
+Frontend components use Vitest, jsdom, Testing Library, and V8 coverage. From
+`frontend/`, run `npm test` for component and app tests,
+`npm run test:coverage` to generate the coverage report, `npm run lint` for
+ESLint, and `npm run build` for TypeScript checking and a production Vite build.
+Coverage reports are available at `backend/build/reports/kover/html/index.html`
+and `frontend/coverage/index.html`.
 
 ## Current limitations
 

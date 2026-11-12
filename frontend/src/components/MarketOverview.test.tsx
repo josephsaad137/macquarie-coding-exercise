@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Dataset } from '../api'
+import type { DailyBar, Dataset, VwapPoint } from '../api'
 import { MarketOverview } from './MarketOverview'
 
 const dataset: Dataset = {
@@ -55,6 +55,50 @@ describe('MarketOverview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
     expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date.')
     expect(onApplyFilters).not.toHaveBeenCalled()
+  })
+
+  it('displays analytics values and date ranges from returned market data', () => {
+    const bar: DailyBar = {
+      contract: 'ESH25',
+      date: '2025-01-02',
+      open: 100,
+      high: 105,
+      low: 98,
+      close: 103.25,
+      volume: 4200,
+    }
+    const point: VwapPoint = {
+      contract: 'ESH25',
+      timestamp: '2025-01-02T09:30:00Z',
+      value: 102.75,
+    }
+    render(
+      <MarketOverview
+        dataset={dataset}
+        selectedId="one"
+        importedRows={5}
+        rejectedRows={1}
+        rejectionRate="16.7% rejected"
+        issueCount={0}
+        issueTypes={0}
+        bars={[bar]}
+        vwap={[point]}
+        insights={[]}
+        analyticsLoading={false}
+        analyticsError=""
+        filters={{ contract: '', from: '', to: '' }}
+        onFiltersChange={vi.fn()}
+        onApplyFilters={vi.fn()}
+        onImport={vi.fn()}
+        onViewQuality={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: 'daily trend, latest 103.25' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'vwap trend, latest 102.75' })).toBeInTheDocument()
+    expect(screen.getByText('Jan 2, 2025')).toBeInTheDocument()
+    expect(screen.getByText('4,200')).toBeInTheDocument()
+    expect(screen.getByText('2025-01-02 09:30:00Z – 2025-01-02 09:30:00Z')).toBeInTheDocument()
   })
 
   it('shows the first-dataset onboarding action', () => {

@@ -19,6 +19,28 @@ function renderDialog(onImport = vi.fn().mockResolvedValue(imported)) {
 }
 
 describe('ImportDialog', () => {
+  it('requires a non-empty file before importing', async () => {
+    const { onImport } = renderDialog()
+    fireEvent.click(screen.getByRole('button', { name: 'Import dataset' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a CSV or Parquet file to import.')
+
+    fireEvent.change(screen.getByLabelText(/Choose a data file/), { target: { files: [new File([], 'empty.csv')] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import dataset' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a CSV or Parquet file to import.')
+    expect(onImport).not.toHaveBeenCalled()
+  })
+
+  it('rejects files larger than the upload limit', async () => {
+    const { onImport } = renderDialog()
+    const file = new File(['data'], 'large.csv')
+    Object.defineProperty(file, 'size', { value: 50 * 1024 * 1024 + 1 })
+    fireEvent.change(screen.getByLabelText(/Choose a data file/), { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import dataset' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Files must be 50 MB or smaller.')
+    expect(onImport).not.toHaveBeenCalled()
+  })
+
   it('rejects unsupported extensions before making an API call', async () => {
     const { onImport } = renderDialog()
     fireEvent.change(screen.getByLabelText(/Choose a data file/), { target: { files: [new File(['data'], 'bars.json')] } })
@@ -45,5 +67,17 @@ describe('ImportDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Import dataset' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid timestamp')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('uses a fallback message for non-Error failures and closes from the backdrop', async () => {
+    const onClose = vi.fn()
+    render(<ImportDialog onClose={onClose} onImport={vi.fn().mockRejectedValue('network failure')} />)
+    fireEvent.change(screen.getByLabelText(/Choose a data file/), { target: { files: [new File(['data'], 'bars.csv')] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import dataset' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Import failed. Check the backend and try again.')
+
+    const backdrop = screen.getByRole('dialog').parentElement
+    fireEvent.mouseDown(backdrop!)
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })
