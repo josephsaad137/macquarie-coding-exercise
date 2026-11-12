@@ -62,7 +62,19 @@ export interface Page<T> {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init)
+  const method = init?.method ?? 'GET'
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, init)
+  } catch (error) {
+    console.error('API network request failed', {
+      method,
+      path,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+
   if (!response.ok) {
     let message = `Request failed (${response.status})`
     try {
@@ -71,13 +83,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         message = body.message
       } else if (typeof body === 'object' && body !== null && 'error' in body && typeof body.error === 'string') {
         message = body.error
+      } else if (typeof body === 'object' && body !== null && 'detail' in body && typeof body.detail === 'string') {
+        message = body.detail
       }
     } catch {
       // Some server errors do not include a JSON response body.
     }
+    const logData = { method, path, status: response.status, message }
+    if (response.status >= 500) {
+      console.error('API request failed', logData)
+    } else {
+      console.warn('API request was rejected', logData)
+    }
     throw new Error(message)
   }
-  return response.json() as Promise<T>
+
+  try {
+    return await response.json() as T
+  } catch (error) {
+    console.error('API response could not be decoded', {
+      method,
+      path,
+      status: response.status,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
 }
 
 function queryString(params: Record<string, string | number | undefined>): string {
@@ -112,11 +143,19 @@ async function latestAnalyticsPage<T>(path: string): Promise<Page<T>> {
 export const api = {
   listDatasets: () => request<Dataset[]>('/datasets'),
 
-  importDataset: (file: File, frequency: 'minute' | 'daily') => {
+  importDataset: async (file: File, frequency: 'minute' | 'daily') => {
     const form = new FormData()
     form.set('file', file)
     form.set('frequency', frequency)
-    return request<ImportResult>('/datasets', { method: 'POST', body: form })
+    const result = await request<ImportResult>('/datasets', { method: 'POST', body: form })
+    console.info('Dataset import completed', {
+      datasetId: result.id,
+      filename: result.filename,
+      frequency: result.frequency,
+      rowsImported: result.rowsImported,
+      rowsRejected: result.rowsRejected,
+    })
+    return result
   },
 
   quality: (datasetId: string, page: number, size = 10) =>

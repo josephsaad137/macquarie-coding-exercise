@@ -22,6 +22,7 @@ import java.time.format.DateTimeParseException
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -30,6 +31,7 @@ import org.springframework.web.server.ResponseStatusException
 class DatasetService(
     private val datasetRepository: DatasetRepository,
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
 
     private companion object {
         val REQUIRED_FIELDS = listOf("contract", "timestamp", "open", "high", "low", "close", "volume")
@@ -54,8 +56,8 @@ class DatasetService(
     ): DatasetImportResult {
 
         val importedRows = when (extension) {
-            "csv" -> processCsv(content)
-            "parquet" -> processParquet(content)
+            "csv" -> processCsv(filename, content)
+            "parquet" -> processParquet(filename, content)
             else -> throw badRequest("Only CSV and Parquet files are supported")
         }
 
@@ -81,6 +83,16 @@ class DatasetService(
                 bars = importedRows.bars,
                 qualityIssues = qualityIssues,
             ),
+        )
+        logger.info(
+            "Imported dataset id={} filename={} format={} frequency={} rowsImported={} rowsRejected={} qualityFindings={}",
+            id,
+            filename,
+            extension,
+            frequency.name.lowercase(Locale.ROOT),
+            rowsImported,
+            rowsRejected,
+            qualityIssues.size,
         )
 
         return DatasetImportResult(
@@ -133,7 +145,7 @@ class DatasetService(
             }
         }
 
-    private fun processCsv(content: ByteArray): ImportedRows {
+    private fun processCsv(filename: String, content: ByteArray): ImportedRows {
         return try {
             csvFileReader.read(content) { table ->
                 if (table.headers.isEmpty()) throw badRequest("The CSV file does not contain a header")
@@ -141,12 +153,13 @@ class DatasetService(
             }
         } catch (exception: ResponseStatusException) {
             throw exception
-        } catch (_: IOException) {
+        } catch (exception: IOException) {
+            logger.warn("Rejected unreadable CSV dataset filename={} reason={}", filename, exception.message, exception)
             throw badRequest("The CSV file could not be read")
         }
     }
 
-    private fun processParquet(content: ByteArray): ImportedRows {
+    private fun processParquet(filename: String, content: ByteArray): ImportedRows {
         return try {
             parquetFileReader.read(content) { table ->
                 if (table.headers.isEmpty()) {
@@ -157,7 +170,8 @@ class DatasetService(
             }
         } catch (exception: ResponseStatusException) {
             throw exception
-        } catch (_: IOException) {
+        } catch (exception: IOException) {
+            logger.warn("Rejected unreadable Parquet dataset filename={} reason={}", filename, exception.message, exception)
             throw badRequest("The uploaded Parquet file could not be read")
         }
     }

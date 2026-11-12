@@ -89,6 +89,14 @@ Minute-level source timestamps in the provided sample use Chicago wall-clock
 labels. See [ARCHITECTURE.md](./ARCHITECTURE.md) for design boundaries,
 timestamp semantics, and current limitations.
 
+## Logging
+
+The backend logs dataset import summaries at `INFO`, unreadable uploads at
+`WARN`, and unexpected API failures at `ERROR`. The frontend logs successful
+imports at `INFO`, rejected API requests at `WARN`, and network, server, or
+response-decoding failures at `ERROR`. Logs include request or dataset context
+but do not include uploaded file contents.
+
 ## Tests
 
 Run the backend unit and integration test suites and generate a Kover coverage

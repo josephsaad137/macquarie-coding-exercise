@@ -163,14 +163,33 @@ describe('api client', () => {
     await expect(api.listDatasets()).rejects.toThrow('Dataset not found')
   })
 
+  it('uses the problem detail from unexpected server errors', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({
+      type: 'about:blank',
+      title: 'Internal Server Error',
+      status: 500,
+      detail: 'An unexpected error occurred',
+    }), { status: 500 }))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(api.listDatasets()).rejects.toThrow('An unexpected error occurred')
+    expect(console.error).toHaveBeenCalledWith('API request failed', {
+      method: 'GET',
+      path: '/datasets',
+      status: 500,
+      message: 'An unexpected error occurred',
+    })
+  })
+
   it('falls back to the status when the error body is missing or has no recognized message', async () => {
     fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'ignored' }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ title: 'ignored' }), { status: 503 }))
       .mockResolvedValueOnce({
         ok: false,
         status: 502,
         json: () => Promise.reject(new Error('invalid JSON')),
       })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await expect(api.listDatasets()).rejects.toThrow('Request failed (503)')
     await expect(api.listDatasets()).rejects.toThrow('Request failed (502)')
