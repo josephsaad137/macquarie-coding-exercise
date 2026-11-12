@@ -91,21 +91,28 @@ timestamp semantics, and current limitations.
 
 ## Tests
 
-Run the backend unit and integration test suites:
+Run the backend unit and integration test suites and generate a Kover coverage
+report:
 
 ```sh
 cd backend
 ./gradlew test
+./gradlew koverHtmlReport
 ```
 
-Run the frontend component tests, lint, and production build:
+The HTML report is written to `backend/build/reports/kover/html/index.html`.
+
+Run the frontend component tests, generate V8 coverage, lint, and build:
 
 ```sh
 cd frontend
 npm test
+npm run test:coverage
 npm run lint
 npm run build
 ```
+
+The frontend coverage report is written to `frontend/coverage/index.html`.
 
 The React UI is organized in `frontend/src/components/`, with component tests
 colocated beside the components. The app-level test is in
