@@ -118,4 +118,6 @@ The React UI is organized in `frontend/src/components/`, with component tests
 colocated beside the components. The app-level test is in
 `frontend/src/App.test.tsx`. During development, Vite proxies `/api` requests
 to `http://localhost:8080`. Set `VITE_API_BASE_URL` to use a different API
-base URL.
+base URL. Charts show the most recent 500 points in the selected result range
+when it contains more than 500; the daily-bars table remains separately
+paginated.

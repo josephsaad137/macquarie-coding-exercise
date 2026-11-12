@@ -186,6 +186,15 @@ class DatasetServiceTest {
     }
 
     @Test
+    fun `classifies CSV syntax errors as bad requests`() {
+        val error = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+            service.importDataset("bars.csv", "csv", "contract,timestamp\n\"unterminated".toByteArray())
+        }
+
+        assertEquals(HttpStatus.BAD_REQUEST, error.statusCode)
+    }
+
+    @Test
     fun `rejects malformed CSV records with extra fields`() {
         val csv = """
             contract,timestamp,open,high,low,close,volume
@@ -196,6 +205,22 @@ class DatasetServiceTest {
 
         assertEquals(0, imported.rowsImported)
         assertEquals(1, imported.rowsRejected)
+    }
+
+    @Test
+    fun `classifies out of range epoch timestamps as malformed records`() {
+        val imported = service.importDataset(
+            "out-of-range-timestamp.csv",
+            "csv",
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,9223372036854775808,100,102,99,101,10
+            """.trimIndent().toByteArray(),
+        )
+
+        assertEquals(0, imported.rowsImported)
+        assertEquals(1, imported.rowsRejected)
+        assertEquals("MALFORMED_RECORD", service.qualityIssues(imported.id).single().code)
     }
 
     @Test

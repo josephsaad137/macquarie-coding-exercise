@@ -12,6 +12,7 @@ import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.QualityIssue
 import com.example.demo.service.model.TabularData
 import java.io.IOException
+import java.time.DateTimeException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -142,8 +143,6 @@ class DatasetService(
             throw exception
         } catch (_: IOException) {
             throw badRequest("The CSV file could not be read")
-        } catch (_: RuntimeException) {
-            throw badRequest("The CSV file could not be read")
         }
     }
 
@@ -159,8 +158,6 @@ class DatasetService(
         } catch (exception: ResponseStatusException) {
             throw exception
         } catch (_: IOException) {
-            throw badRequest("The uploaded Parquet file could not be read")
-        } catch (_: RuntimeException) {
             throw badRequest("The uploaded Parquet file could not be read")
         }
     }
@@ -280,7 +277,11 @@ class DatasetService(
         val normalized = value.trim()
         if (normalized.isEmpty()) return null
         normalized.toLongOrNull()?.let { epochMillis ->
-            return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
+            return try {
+                LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
+            } catch (_: DateTimeException) {
+                null
+            }
         }
         return try {
             LocalDateTime.parse(normalized)

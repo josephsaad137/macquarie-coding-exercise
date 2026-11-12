@@ -48,7 +48,7 @@ class AnalyticsService(
                     volume = orderedBars.fold(0L) { total, bar -> Math.addExact(total, bar.volume) },
                 )
             }
-            .sortedWith(compareBy(DailyBar::contract, DailyBar::date))
+            .sortedWith(compareBy(DailyBar::date, DailyBar::contract))
         return paginate(
             bars,
             page,
@@ -110,6 +110,7 @@ class AnalyticsService(
                 }
                 result
             }
+            .sortedWith(compareBy(RollingVwapPoint::timestamp, RollingVwapPoint::contract))
         return paginate(
             points,
             page,

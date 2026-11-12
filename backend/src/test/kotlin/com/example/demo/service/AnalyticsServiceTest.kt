@@ -178,6 +178,45 @@ class AnalyticsServiceTest {
     }
 
     @Test
+    fun `orders analytics chronologically across contracts for recent chart windows`() {
+        val (analytics, datasetId) = serviceWithData(
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-03T09:30:00,100,102,99,101,10
+                ESM25,2025-01-01T09:30:00,200,202,199,201,10
+                ESH25,2025-01-02T09:30:00,101,103,100,102,10
+                ESM25,2025-01-02T09:30:00,201,203,200,202,10
+            """.trimIndent(),
+        )
+
+        val dailyBars = analytics.dailyBars(
+            datasetId, null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03"), page = 0, size = 10,
+        )
+        val vwapPoints = analytics.rollingVwap(
+            datasetId, null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03"), page = 0, size = 10,
+        )
+
+        assertEquals(
+            listOf(
+                "2025-01-01:ESM25",
+                "2025-01-02:ESH25",
+                "2025-01-02:ESM25",
+                "2025-01-03:ESH25",
+            ),
+            dailyBars.items.map { "${it.date}:${it.contract}" },
+        )
+        assertEquals(
+            listOf(
+                "2025-01-01T09:30:ESM25",
+                "2025-01-02T09:30:ESH25",
+                "2025-01-02T09:30:ESM25",
+                "2025-01-03T09:30:ESH25",
+            ),
+            vwapPoints.items.map { "${it.timestamp}:${it.contract}" },
+        )
+    }
+
+    @Test
     fun `returns full analytics ranges across contracts independently of the requested page`() {
         val (analytics, datasetId) = serviceWithData(
             """

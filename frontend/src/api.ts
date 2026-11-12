@@ -92,8 +92,22 @@ const ANALYTICS_PAGE_SIZE = 500
 export const DAILY_BARS_PAGE_SIZE = 10
 export const ANALYTICS_CHART_POINT_LIMIT = ANALYTICS_PAGE_SIZE
 
-const analyticsPage = <T>(path: string) =>
-  request<Page<T>>(`${path}&page=0&size=${ANALYTICS_PAGE_SIZE}`)
+async function latestAnalyticsPage<T>(path: string): Promise<Page<T>> {
+  const firstPage = await request<Page<T>>(`${path}&page=0&size=${ANALYTICS_PAGE_SIZE}`)
+  if (firstPage.totalElements <= ANALYTICS_PAGE_SIZE) return firstPage
+
+  const lastPageNumber = Math.floor((firstPage.totalElements - 1) / ANALYTICS_PAGE_SIZE)
+  const lastPage = await request<Page<T>>(`${path}&page=${lastPageNumber}&size=${ANALYTICS_PAGE_SIZE}`)
+  const precedingPage = lastPageNumber === 1
+    ? firstPage
+    : await request<Page<T>>(`${path}&page=${lastPageNumber - 1}&size=${ANALYTICS_PAGE_SIZE}`)
+
+  return {
+    ...firstPage,
+    page: lastPageNumber,
+    items: [...precedingPage.items, ...lastPage.items].slice(-ANALYTICS_PAGE_SIZE),
+  }
+}
 
 export const api = {
   listDatasets: () => request<Dataset[]>('/datasets'),
@@ -112,7 +126,7 @@ export const api = {
     request<Insight[]>(`/insights?${queryString({ datasetId })}`),
 
   dailyBars: (datasetId: string, contract: string, from: string, to: string) =>
-    analyticsPage<DailyBar>(`/analytics/daily-bars?${queryString({
+    latestAnalyticsPage<DailyBar>(`/analytics/daily-bars?${queryString({
       datasetId,
       contract: contract || undefined,
       from: from || '0001-01-01',
@@ -130,7 +144,7 @@ export const api = {
     })}`),
 
   vwap: (datasetId: string, contract: string, from: string, to: string) =>
-    analyticsPage<VwapPoint>(`/analytics/vwap?${queryString({
+    latestAnalyticsPage<VwapPoint>(`/analytics/vwap?${queryString({
       datasetId,
       contract: contract || undefined,
       from: from || '0001-01-01',
