@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { api, type DailyBar, type Dataset, type ImportResult, type QualityIssue, type VwapPoint } from './api'
+import { api, ANALYTICS_CHART_POINT_LIMIT, DAILY_BARS_PAGE_SIZE, type DailyBar, type Dataset, type ImportResult, type QualityIssue, type VwapPoint } from './api'
 import { ImportDialog } from './components/ImportDialog'
 import { MarketOverview, type AnalyticsFilters } from './components/MarketOverview'
 import { QualityReport } from './components/QualityReport'
@@ -18,9 +18,14 @@ function App() {
   const [filters, setFilters] = useState<AnalyticsFilters>(EMPTY_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState<AnalyticsFilters>(EMPTY_FILTERS)
   const [bars, setBars] = useState<DailyBar[]>([])
+  const [tableBars, setTableBars] = useState<DailyBar[]>([])
+  const [dailyBarPage, setDailyBarPage] = useState(0)
+  const [dailyBarRequestPage, setDailyBarRequestPage] = useState(0)
   const [vwap, setVwap] = useState<VwapPoint[]>([])
   const [dailyBarCount, setDailyBarCount] = useState(0)
   const [vwapPointCount, setVwapPointCount] = useState(0)
+  const [dailyBarRange, setDailyBarRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null })
+  const [vwapRange, setVwapRange] = useState<{ start: string | null; end: string | null }>({ start: null, end: null })
   const [issues, setIssues] = useState<QualityIssue[]>([])
   const [issueCount, setIssueCount] = useState(0)
   const [issuePage, setIssuePage] = useState(0)
@@ -28,6 +33,7 @@ function App() {
   const [insights, setInsights] = useState<Awaited<ReturnType<typeof api.insights>>>([])
   const [datasetsLoading, setDatasetsLoading] = useState(true)
   const [loadedAnalyticsKey, setLoadedAnalyticsKey] = useState('')
+  const [loadedDailyBarsKey, setLoadedDailyBarsKey] = useState('')
   const [pageError, setPageError] = useState('')
   const [analyticsError, setAnalyticsError] = useState('')
   const [showImport, setShowImport] = useState(false)
@@ -41,8 +47,10 @@ function App() {
   const qualityPages = Math.max(1, Math.ceil(issueCount / 10))
   const qualityKey = `${selectedId}:${issuePage}`
   const analyticsKey = `${selectedId}:${appliedFilters.contract}:${appliedFilters.from}:${appliedFilters.to}`
+  const dailyBarsKey = `${analyticsKey}:${dailyBarRequestPage}`
   const qualityLoading = Boolean(selectedId && loadedQualityKey !== qualityKey)
   const analyticsLoading = Boolean(selectedId && loadedAnalyticsKey !== analyticsKey)
+  const dailyBarsLoading = Boolean(selectedId && loadedDailyBarsKey !== dailyBarsKey)
   const issueTypes = useMemo(() => new Set(issues.map((issue) => issue.code)).size, [issues])
 
   useEffect(() => {
@@ -103,7 +111,8 @@ function App() {
         if (!active) return
         setBars(dailyResult.items)
         setVwap(vwapResult.items)
-        setDailyBarCount(dailyResult.totalElements)
+        setDailyBarRange({ start: dailyResult.rangeStart ?? null, end: dailyResult.rangeEnd ?? null })
+        setVwapRange({ start: vwapResult.rangeStart ?? null, end: vwapResult.rangeEnd ?? null })
         setVwapPointCount(vwapResult.totalElements)
         setLoadedAnalyticsKey(analyticsKey)
       })
@@ -116,6 +125,26 @@ function App() {
     return () => { active = false }
   }, [selectedId, appliedFilters, analyticsKey])
 
+  useEffect(() => {
+    if (!selectedId) return
+    let active = true
+    api.dailyBarsPage(selectedId, appliedFilters.contract, appliedFilters.from, appliedFilters.to, dailyBarRequestPage)
+      .then((result) => {
+        if (!active) return
+        setTableBars(result.items)
+        setDailyBarCount(result.totalElements)
+        setDailyBarPage(result.page)
+        setLoadedDailyBarsKey(dailyBarsKey)
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setAnalyticsError(error instanceof Error ? error.message : 'Unable to load daily bars.')
+          setLoadedDailyBarsKey(dailyBarsKey)
+        }
+      })
+    return () => { active = false }
+  }, [selectedId, appliedFilters, dailyBarRequestPage, dailyBarsKey])
+
   async function handleImport(file: File, frequency: 'minute' | 'daily'): Promise<ImportResult> {
     const result = await api.importDataset(file, frequency)
     setDatasets((current) => [
@@ -124,6 +153,8 @@ function App() {
     ])
     setSelectedId(result.id)
     setIssuePage(0)
+    setDailyBarPage(0)
+    setDailyBarRequestPage(0)
     setFilters(EMPTY_FILTERS)
     setAppliedFilters(EMPTY_FILTERS)
     try {
@@ -139,6 +170,8 @@ function App() {
     setSelectedId(id)
     setAnalyticsError('')
     setIssuePage(0)
+    setDailyBarPage(0)
+    setDailyBarRequestPage(0)
     setFilters(EMPTY_FILTERS)
     setAppliedFilters(EMPTY_FILTERS)
   }
@@ -174,8 +207,15 @@ function App() {
               issueCount={issueCount}
               issueTypes={issueTypes}
               dailyBarCount={dailyBarCount}
+              chartPointLimit={ANALYTICS_CHART_POINT_LIMIT}
+              dailyBarRange={dailyBarRange}
+              vwapRange={vwapRange}
               vwapPointCount={vwapPointCount}
               bars={bars}
+              tableBars={tableBars}
+              dailyBarPage={dailyBarPage}
+              dailyBarPages={Math.ceil(dailyBarCount / DAILY_BARS_PAGE_SIZE)}
+              dailyBarsLoading={dailyBarsLoading}
               vwap={vwap}
               insights={insights}
               analyticsLoading={analyticsLoading}
@@ -184,8 +224,11 @@ function App() {
               onFiltersChange={setFilters}
               onApplyFilters={(nextFilters) => {
                 setAnalyticsError('')
+                setDailyBarPage(0)
+                setDailyBarRequestPage(0)
                 setAppliedFilters(nextFilters)
               }}
+              onDailyBarPageChange={setDailyBarRequestPage}
               onImport={() => setShowImport(true)}
               onViewQuality={() => setView('quality')}
             />

@@ -26,6 +26,13 @@ function renderOverview() {
       issueCount={0}
       issueTypes={0}
       dailyBarCount={0}
+      chartPointLimit={500}
+      dailyBarRange={{ start: null, end: null }}
+      vwapRange={{ start: null, end: null }}
+      tableBars={[]}
+      dailyBarPage={0}
+      dailyBarPages={0}
+      dailyBarsLoading={false}
       vwapPointCount={0}
       bars={[]}
       vwap={[]}
@@ -35,6 +42,7 @@ function renderOverview() {
       filters={{ contract: ' esh25 ', from: '', to: '' }}
       onFiltersChange={onFiltersChange}
       onApplyFilters={onApplyFilters}
+      onDailyBarPageChange={vi.fn()}
       onImport={vi.fn()}
       onViewQuality={vi.fn()}
     />,
@@ -52,7 +60,7 @@ describe('MarketOverview', () => {
   it('blocks an inverted date range with a validation message', () => {
     const onApplyFilters = vi.fn()
     render(
-      <MarketOverview dataset={dataset} selectedId="one" importedRows={5} rejectedRows={1} rejectionRate="16.7% rejected" issueCount={0} issueTypes={0} dailyBarCount={0} vwapPointCount={0} bars={[]} vwap={[]} insights={[]} analyticsLoading={false} analyticsError="" filters={{ contract: '', from: '2025-02-01', to: '2025-01-01' }} onFiltersChange={vi.fn()} onApplyFilters={onApplyFilters} onImport={vi.fn()} onViewQuality={vi.fn()} />,
+      <MarketOverview dataset={dataset} selectedId="one" importedRows={5} rejectedRows={1} rejectionRate="16.7% rejected" issueCount={0} issueTypes={0} dailyBarCount={0} chartPointLimit={500} dailyBarRange={{ start: null, end: null }} vwapRange={{ start: null, end: null }} tableBars={[]} dailyBarPage={0} dailyBarPages={0} dailyBarsLoading={false} vwapPointCount={0} bars={[]} vwap={[]} insights={[]} analyticsLoading={false} analyticsError="" filters={{ contract: '', from: '2025-02-01', to: '2025-01-01' }} onFiltersChange={vi.fn()} onApplyFilters={onApplyFilters} onDailyBarPageChange={vi.fn()} onImport={vi.fn()} onViewQuality={vi.fn()} />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
     expect(screen.getByRole('alert')).toHaveTextContent('End date must be on or after the start date.')
@@ -84,6 +92,13 @@ describe('MarketOverview', () => {
         issueCount={0}
         issueTypes={0}
         dailyBarCount={501}
+        chartPointLimit={500}
+        dailyBarRange={{ start: '2024-01-01', end: '2025-12-31' }}
+        vwapRange={{ start: '2024-01-01T09:30:00', end: '2025-12-31T16:00:00' }}
+        tableBars={[bar]}
+        dailyBarPage={0}
+        dailyBarPages={51}
+        dailyBarsLoading={false}
         vwapPointCount={12345}
         bars={[bar]}
         vwap={[point]}
@@ -93,6 +108,7 @@ describe('MarketOverview', () => {
         filters={{ contract: '', from: '', to: '' }}
         onFiltersChange={vi.fn()}
         onApplyFilters={vi.fn()}
+        onDailyBarPageChange={vi.fn()}
         onImport={vi.fn()}
         onViewQuality={vi.fn()}
       />,
@@ -102,14 +118,19 @@ describe('MarketOverview', () => {
     expect(screen.getByRole('img', { name: 'vwap trend, latest 102.75' })).toBeInTheDocument()
     expect(screen.getByText('501')).toBeInTheDocument()
     expect(screen.getByText('12,345 VWAP points')).toBeInTheDocument()
-    expect(screen.getByText('Jan 2, 2025')).toBeInTheDocument()
+    expect(screen.getByText('501 rows')).toBeInTheDocument()
     expect(screen.getByText('4,200')).toBeInTheDocument()
-    expect(screen.getByText('2025-01-02 09:30:00Z – 2025-01-02 09:30:00Z')).toBeInTheDocument()
+    expect(screen.getAllByText('Jan 2, 2025')).toHaveLength(3)
+    expect(screen.getAllByText('2025-01-02 09:30:00Z')).toHaveLength(2)
+    expect(screen.getByText('Full dataset date range: Jan 1, 2024 – Dec 31, 2025')).toBeInTheDocument()
+    expect(screen.getByText('Full dataset timestamp range: 2024-01-01 09:30:00 – 2025-12-31 16:00:00')).toBeInTheDocument()
+    expect(screen.getByText('Showing 500 of 501 points (limit 500)')).toBeInTheDocument()
+    expect(screen.getByText('Showing 500 of 12,345 points (limit 500)')).toBeInTheDocument()
   })
 
   it('shows the first-dataset onboarding action', () => {
     const onImport = vi.fn()
-    render(<MarketOverview selectedId="" importedRows={0} rejectedRows={0} rejectionRate="No rejected rows" issueCount={0} issueTypes={0} dailyBarCount={0} vwapPointCount={0} bars={[]} vwap={[]} insights={[]} analyticsLoading={false} analyticsError="" filters={{ contract: '', from: '', to: '' }} onFiltersChange={vi.fn()} onApplyFilters={vi.fn()} onImport={onImport} onViewQuality={vi.fn()} />)
+    render(<MarketOverview selectedId="" importedRows={0} rejectedRows={0} rejectionRate="No rejected rows" issueCount={0} issueTypes={0} dailyBarCount={0} chartPointLimit={500} dailyBarRange={{ start: null, end: null }} vwapRange={{ start: null, end: null }} tableBars={[]} dailyBarPage={0} dailyBarPages={0} dailyBarsLoading={false} vwapPointCount={0} bars={[]} vwap={[]} insights={[]} analyticsLoading={false} analyticsError="" filters={{ contract: '', from: '', to: '' }} onFiltersChange={vi.fn()} onApplyFilters={vi.fn()} onDailyBarPageChange={vi.fn()} onImport={onImport} onViewQuality={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: /Import your first dataset/ }))
     expect(onImport).toHaveBeenCalledOnce()
   })

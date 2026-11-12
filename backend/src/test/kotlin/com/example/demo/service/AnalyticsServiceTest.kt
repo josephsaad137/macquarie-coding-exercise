@@ -178,6 +178,39 @@ class AnalyticsServiceTest {
     }
 
     @Test
+    fun `returns full analytics ranges across contracts independently of the requested page`() {
+        val (analytics, datasetId) = serviceWithData(
+            """
+                contract,timestamp,open,high,low,close,volume
+                AAA,2025-01-03T09:30:00,100,102,99,101,10
+                BBB,2025-01-01T09:30:00,100,102,99,101,10
+            """.trimIndent(),
+        )
+
+        val dailyPage = analytics.dailyBars(
+            datasetId,
+            null,
+            LocalDate.parse("2025-01-01"),
+            LocalDate.parse("2025-01-03"),
+            page = 1,
+            size = 1,
+        )
+        val vwapPage = analytics.rollingVwap(
+            datasetId,
+            null,
+            LocalDate.parse("2025-01-01"),
+            LocalDate.parse("2025-01-03"),
+            page = 1,
+            size = 1,
+        )
+
+        assertEquals("2025-01-01", dailyPage.rangeStart)
+        assertEquals("2025-01-03", dailyPage.rangeEnd)
+        assertEquals("2025-01-01T09:30", vwapPage.rangeStart)
+        assertEquals("2025-01-03T09:30", vwapPage.rangeEnd)
+    }
+
+    @Test
     fun `rejects invalid analytics pagination`() {
         val (analytics, datasetId) = serviceWithData(
             "contract,timestamp,open,high,low,close,volume\nESH25,2025-01-02T09:30:00,100,102,99,101,10",

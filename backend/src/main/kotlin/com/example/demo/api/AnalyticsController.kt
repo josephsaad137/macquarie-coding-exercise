@@ -42,6 +42,8 @@ class AnalyticsController(
             totalElements = result.totalElements,
             page = result.page,
             size = result.size,
+            rangeStart = result.rangeStart,
+            rangeEnd = result.rangeEnd,
             items = result.items.map { bar ->
                 DailyBarResponse(
                     contract = bar.contract,
@@ -73,6 +75,8 @@ class AnalyticsController(
             totalElements = result.totalElements,
             page = result.page,
             size = result.size,
+            rangeStart = result.rangeStart,
+            rangeEnd = result.rangeEnd,
             items = result.items.map { point ->
                 RollingVwapResponse(
                     contract = point.contract,

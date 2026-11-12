@@ -81,6 +81,18 @@ describe('api client', () => {
     )
   })
 
+  it('requests a selected daily-bars page with the table page size', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ totalElements: 1001, page: 100, size: 10, items: [] })))
+
+    const result = await api.dailyBarsPage('dataset-1', 'ESH25', '2025-01-01', '2025-12-31', 100)
+
+    expect(result.totalElements).toBe(1001)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/analytics/daily-bars?datasetId=dataset-1&contract=ESH25&from=2025-01-01&to=2025-12-31&page=100&size=10',
+      undefined,
+    )
+  })
+
   it('includes contract and date filters for VWAP requests', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ totalElements: 100000, page: 0, size: 500, items: [] })))
 

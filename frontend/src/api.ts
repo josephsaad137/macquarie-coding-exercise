@@ -56,6 +56,8 @@ export interface Page<T> {
   totalElements: number
   page: number
   size: number
+  rangeStart?: string | null
+  rangeEnd?: string | null
   items: T[]
 }
 
@@ -87,6 +89,8 @@ function queryString(params: Record<string, string | number | undefined>): strin
 }
 
 const ANALYTICS_PAGE_SIZE = 500
+export const DAILY_BARS_PAGE_SIZE = 10
+export const ANALYTICS_CHART_POINT_LIMIT = ANALYTICS_PAGE_SIZE
 
 const analyticsPage = <T>(path: string) =>
   request<Page<T>>(`${path}&page=0&size=${ANALYTICS_PAGE_SIZE}`)
@@ -113,6 +117,16 @@ export const api = {
       contract: contract || undefined,
       from: from || '0001-01-01',
       to: to || '9999-12-31',
+    })}`),
+
+  dailyBarsPage: (datasetId: string, contract: string, from: string, to: string, page: number) =>
+    request<Page<DailyBar>>(`/analytics/daily-bars?${queryString({
+      datasetId,
+      contract: contract || undefined,
+      from: from || '0001-01-01',
+      to: to || '9999-12-31',
+      page,
+      size: DAILY_BARS_PAGE_SIZE,
     })}`),
 
   vwap: (datasetId: string, contract: string, from: string, to: string) =>

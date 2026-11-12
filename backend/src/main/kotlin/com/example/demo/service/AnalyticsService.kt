@@ -49,7 +49,13 @@ class AnalyticsService(
                 )
             }
             .sortedWith(compareBy(DailyBar::contract, DailyBar::date))
-        return paginate(bars, page, size)
+        return paginate(
+            bars,
+            page,
+            size,
+            rangeStart = bars.minOfOrNull(DailyBar::date)?.toString(),
+            rangeEnd = bars.maxOfOrNull(DailyBar::date)?.toString(),
+        )
     }
 
     fun rollingVwap(
@@ -104,7 +110,13 @@ class AnalyticsService(
                 }
                 result
             }
-        return paginate(points, page, size)
+        return paginate(
+            points,
+            page,
+            size,
+            rangeStart = points.minOfOrNull(RollingVwapPoint::timestamp)?.toString(),
+            rangeEnd = points.maxOfOrNull(RollingVwapPoint::timestamp)?.toString(),
+        )
     }
 
     private fun filteredBars(datasetId: UUID, contract: String?): List<MarketDataBar> {
@@ -129,7 +141,13 @@ class AnalyticsService(
         }
     }
 
-    private fun <T> paginate(items: List<T>, page: Int, size: Int): AnalyticsPage<T> {
+    private fun <T> paginate(
+        items: List<T>,
+        page: Int,
+        size: Int,
+        rangeStart: String? = null,
+        rangeEnd: String? = null,
+    ): AnalyticsPage<T> {
         val offset = page.toLong() * size
         val pageItems = if (offset >= items.size) emptyList() else items.drop(offset.toInt()).take(size)
         return AnalyticsPage(
@@ -137,6 +155,8 @@ class AnalyticsService(
             page = page,
             size = size,
             items = pageItems,
+            rangeStart = rangeStart,
+            rangeEnd = rangeEnd,
         )
     }
 
