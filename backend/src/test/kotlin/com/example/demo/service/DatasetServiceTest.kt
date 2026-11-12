@@ -1,24 +1,23 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
+import com.example.demo.exception.InvalidRequestException
 import com.example.demo.service.model.DatasetFrequency
 import org.junit.jupiter.api.Test
-import org.springframework.web.server.ResponseStatusException
-import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import org.springframework.http.HttpStatus
+import kotlin.test.assertEquals
 
 class DatasetServiceTest {
     private val service = DatasetService(InMemoryDatasetRepository())
 
     @Test
     fun `rejects an empty Parquet dataset`() {
-        val exception = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val exception = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.importDataset("empty.parquet", "parquet", byteArrayOf())
         }
 
-        assertEquals(HttpStatus.BAD_REQUEST, exception.statusCode)
+        assertTrue(exception.message!!.contains("could not be read"))
     }
 
     @Test
@@ -165,33 +164,32 @@ class DatasetServiceTest {
 
     @Test
     fun `rejects unsupported extensions and missing required columns`() {
-        val unsupported = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val unsupported = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.importDataset("bars.xlsx", "xlsx", "data".toByteArray())
         }
-        assertEquals(HttpStatus.BAD_REQUEST, unsupported.statusCode)
 
-        val missingColumns = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val missingColumns = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.importDataset("bars.csv", "csv", "contract,timestamp,open".toByteArray())
         }
-        assertEquals(HttpStatus.BAD_REQUEST, missingColumns.statusCode)
+        assertTrue(missingColumns.message!!.contains("missing the required"))
     }
 
     @Test
     fun `rejects malformed Parquet bytes`() {
-        val error = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val error = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.importDataset("bars.parquet", "parquet", "not parquet".toByteArray())
         }
 
-        assertEquals(HttpStatus.BAD_REQUEST, error.statusCode)
+        assertTrue(error.message!!.contains("could not be read"))
     }
 
     @Test
     fun `classifies CSV syntax errors as bad requests`() {
-        val error = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val error = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.importDataset("bars.csv", "csv", "contract,timestamp\n\"unterminated".toByteArray())
         }
 
-        assertEquals(HttpStatus.BAD_REQUEST, error.statusCode)
+        assertNotNull(error.message)
     }
 
     @Test

@@ -34,7 +34,9 @@ class DatasetControllerTest {
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(DatasetController(datasetService, qualityService)).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(DatasetController(datasetService, qualityService))
+            .setControllerAdvice(ApiExceptionHandler())
+            .build()
     }
 
     @Test

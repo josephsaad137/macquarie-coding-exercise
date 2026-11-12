@@ -1,6 +1,8 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
+import com.example.demo.exception.InvalidRequestException
+import com.example.demo.exception.ResourceNotFoundException
 import com.example.demo.service.model.DailyBar
 import java.util.UUID
 import java.time.LocalDate
@@ -9,8 +11,6 @@ import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 
 class AnalyticsServiceTest {
     @Test
@@ -255,30 +255,30 @@ class AnalyticsServiceTest {
             "contract,timestamp,open,high,low,close,volume\nESH25,2025-01-02T09:30:00,100,102,99,101,10",
         )
 
-        val negativePage = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val negativePage = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             analytics.dailyBars(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), -1, 10)
         }
-        val excessiveSize = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val excessiveSize = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             analytics.rollingVwap(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 501)
         }
 
-        assertEquals(HttpStatus.BAD_REQUEST, negativePage.statusCode)
-        assertEquals(HttpStatus.BAD_REQUEST, excessiveSize.statusCode)
+        assertTrue(negativePage.message!!.contains("Page"))
+        assertTrue(excessiveSize.message!!.contains("Size"))
     }
 
     @Test
     fun `rejects analytics requests for unknown datasets`() {
         val analytics = AnalyticsService(InMemoryDatasetRepository())
 
-        val dailyError = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val dailyError = org.junit.jupiter.api.assertThrows<ResourceNotFoundException> {
             analytics.dailyBars(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"), 0, 10)
         }
-        val vwapError = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val vwapError = org.junit.jupiter.api.assertThrows<ResourceNotFoundException> {
             analytics.rollingVwap(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"), 0, 10)
         }
 
-        assertEquals(HttpStatus.NOT_FOUND, dailyError.statusCode)
-        assertEquals(HttpStatus.NOT_FOUND, vwapError.statusCode)
+        assertTrue(dailyError.message!!.contains("was not found"))
+        assertTrue(vwapError.message!!.contains("was not found"))
     }
 
     private fun serviceWithData(csv: String): Pair<AnalyticsService, UUID> {

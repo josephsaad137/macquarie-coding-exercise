@@ -2,6 +2,7 @@ package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
 import com.example.demo.persistence.StoredDataset
+import com.example.demo.exception.InvalidRequestException
 import com.example.demo.service.model.BarKey
 import com.example.demo.service.model.BarParseResult
 import com.example.demo.service.model.DatasetFrequency
@@ -23,9 +24,7 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 import java.util.UUID
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 
 @Service
 class DatasetService(
@@ -58,7 +57,7 @@ class DatasetService(
         val importedRows = when (extension) {
             "csv" -> processCsv(filename, content)
             "parquet" -> processParquet(filename, content)
-            else -> throw badRequest("Only CSV and Parquet files are supported")
+            else -> throw InvalidRequestException("Only CSV and Parquet files are supported")
         }
 
         val rowsImported = importedRows.bars.size
@@ -148,14 +147,12 @@ class DatasetService(
     private fun processCsv(filename: String, content: ByteArray): ImportedRows {
         return try {
             csvFileReader.read(content) { table ->
-                if (table.headers.isEmpty()) throw badRequest("The CSV file does not contain a header")
+                if (table.headers.isEmpty()) throw InvalidRequestException("The CSV file does not contain a header")
                 processRows(table, initialRowNumber = 1L)
             }
-        } catch (exception: ResponseStatusException) {
-            throw exception
         } catch (exception: IOException) {
             logger.warn("Rejected unreadable CSV dataset filename={} reason={}", filename, exception.message, exception)
-            throw badRequest("The CSV file could not be read")
+            throw InvalidRequestException("The CSV file could not be read")
         }
     }
 
@@ -163,16 +160,14 @@ class DatasetService(
         return try {
             parquetFileReader.read(content) { table ->
                 if (table.headers.isEmpty()) {
-                    throw badRequest("The Parquet file contains no records or schema")
+                    throw InvalidRequestException("The Parquet file contains no records or schema")
                 } else {
                     processRows(table, initialRowNumber = 0L)
                 }
             }
-        } catch (exception: ResponseStatusException) {
-            throw exception
         } catch (exception: IOException) {
             logger.warn("Rejected unreadable Parquet dataset filename={} reason={}", filename, exception.message, exception)
-            throw badRequest("The uploaded Parquet file could not be read")
+            throw InvalidRequestException("The uploaded Parquet file could not be read")
         }
     }
 
@@ -227,7 +222,7 @@ class DatasetService(
         val columns = linkedMapOf<String, Int>()
         REQUIRED_FIELDS.forEach { field ->
             val index = HEADER_ALIASES.getValue(field).firstNotNullOfOrNull(normalized::get)
-                ?: throw badRequest("The uploaded file is missing the required '$field' column")
+                ?: throw InvalidRequestException("The uploaded file is missing the required '$field' column")
             columns[field] = index
         }
         return columns
@@ -317,6 +312,4 @@ class DatasetService(
     }
 
     private fun normalizeHeader(name: String): String = name.trim().lowercase().replace(Regex("[^a-z0-9]"), "")
-
-    private fun badRequest(message: String) = ResponseStatusException(HttpStatus.BAD_REQUEST, message)
 }

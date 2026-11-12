@@ -28,7 +28,9 @@ class AnalyticsControllerTest {
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(AnalyticsController(analyticsService)).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(AnalyticsController(analyticsService))
+            .setControllerAdvice(ApiExceptionHandler())
+            .build()
     }
 
     @Test

@@ -1,17 +1,16 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
+import com.example.demo.exception.InvalidRequestException
+import com.example.demo.exception.ResourceNotFoundException
 import com.example.demo.service.model.AnalyticsPage
 import com.example.demo.service.model.DailyBar
 import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.RollingVwapPoint
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.util.Locale
 import java.util.UUID
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 
 @Service
 class AnalyticsService(
@@ -129,16 +128,16 @@ class AnalyticsService(
 
     private fun requireDataset(datasetId: UUID) {
         if (datasetRepository.findDataset(datasetId) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset $datasetId was not found")
+            throw ResourceNotFoundException("Dataset $datasetId was not found")
         }
     }
 
     private fun validatePagination(page: Int, size: Int) {
         if (page < 0) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be zero or greater")
+            throw InvalidRequestException("Page must be zero or greater")
         }
         if (size !in 1..MAX_PAGE_SIZE) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Size must be between 1 and $MAX_PAGE_SIZE")
+            throw InvalidRequestException("Size must be between 1 and $MAX_PAGE_SIZE")
         }
     }
 
