@@ -9,31 +9,43 @@ import java.time.ZoneOffset
 import org.apache.avro.generic.GenericRecord
 import org.apache.parquet.avro.AvroParquetReader
 import org.apache.parquet.conf.PlainParquetConfiguration
+import org.apache.parquet.hadoop.ParquetReader
 import org.apache.parquet.io.InputFile
 import org.apache.parquet.io.SeekableInputStream
 
 class ParquetFileReader {
     @Throws(IOException::class)
     fun <T> read(content: ByteArray, process: (TabularData) -> T): T {
-        val reader = AvroParquetReader.builder<GenericRecord>(
-            ByteArrayParquetInputFile(content),
-            PlainParquetConfiguration(),
-        ).build()
+        val reader = try {
+            AvroParquetReader.builder<GenericRecord>(
+                ByteArrayParquetInputFile(content),
+                PlainParquetConfiguration(),
+            ).build()
+        } catch (exception: RuntimeException) {
+            throw IOException("The Parquet file could not be opened", exception)
+        }
 
         return reader.use { parquetReader ->
-            val firstRecord = parquetReader.read()
+            val firstRecord = readRecordSafely(parquetReader)
                 ?: return@use process(TabularData(headers = emptyList(), rows = emptySequence()))
             val headers = firstRecord.schema.fields.map { it.name() }
             val rows = sequence {
                 yield(readRecord(firstRecord, headers))
                 while (true) {
-                    val record = parquetReader.read() ?: break
+                    val record = readRecordSafely(parquetReader) ?: break
                     yield(readRecord(record, headers))
                 }
             }
             process(TabularData(headers, rows))
         }
     }
+
+    private fun readRecordSafely(reader: ParquetReader<GenericRecord>): GenericRecord? =
+        try {
+            reader.read()
+        } catch (exception: RuntimeException) {
+            throw IOException("The Parquet file contains invalid data", exception)
+        }
 
     private fun readRecord(record: GenericRecord, headers: List<String>): List<String> =
         headers.map { fieldName ->

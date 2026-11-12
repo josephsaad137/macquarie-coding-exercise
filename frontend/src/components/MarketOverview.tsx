@@ -21,6 +21,15 @@ interface MarketOverviewProps {
   rejectionRate: string
   issueCount: number
   issueTypes: number
+  dailyBarCount: number
+  chartPointLimit: number
+  dailyBarRange: { start: string | null; end: string | null }
+  vwapRange: { start: string | null; end: string | null }
+  tableBars: DailyBar[]
+  dailyBarPage: number
+  dailyBarPages: number
+  dailyBarsLoading: boolean
+  vwapPointCount: number
   bars: DailyBar[]
   vwap: VwapPoint[]
   insights: Insight[]
@@ -29,6 +38,7 @@ interface MarketOverviewProps {
   filters: AnalyticsFilters
   onFiltersChange: (filters: AnalyticsFilters) => void
   onApplyFilters: (filters: AnalyticsFilters) => void
+  onDailyBarPageChange: (page: number) => void
   onImport: () => void
   onViewQuality: () => void
 }
@@ -41,6 +51,15 @@ export function MarketOverview({
   rejectionRate,
   issueCount,
   issueTypes,
+  dailyBarCount,
+  chartPointLimit,
+  dailyBarRange,
+  vwapRange,
+  tableBars,
+  dailyBarPage,
+  dailyBarPages,
+  dailyBarsLoading,
+  vwapPointCount,
   bars,
   vwap,
   insights,
@@ -49,6 +68,7 @@ export function MarketOverview({
   filters,
   onFiltersChange,
   onApplyFilters,
+  onDailyBarPageChange,
   onImport,
   onViewQuality,
 }: MarketOverviewProps) {
@@ -78,7 +98,7 @@ export function MarketOverview({
             <StatCard title="ROWS IMPORTED" value={formatNumber(importedRows)} note={dataset.frequency === 'minute' ? 'Minute frequency' : 'Daily frequency'} icon="▤" tone="blue" />
             <StatCard title="QUALITY FINDINGS" value={formatNumber(issueCount)} note={issueCount === 0 ? 'No issues identified' : `${issueTypes} issue types on this page`} icon="⌁" tone="amber" />
             <StatCard title="ROWS REJECTED" value={formatNumber(rejectedRows)} note={rejectionRate} icon="↗" tone="rose" />
-            <StatCard title="DAILY BARS" value={formatNumber(bars.length)} note={analyticsLoading ? 'Updating analytics…' : `${formatNumber(vwap.length)} VWAP points`} icon="⌗" tone="green" />
+            <StatCard title="DAILY BARS" value={formatNumber(dailyBarCount)} note={analyticsLoading ? 'Updating analytics…' : `${formatNumber(vwapPointCount)} VWAP points`} icon="⌗" tone="green" />
           </section>}
 
           <section className="panel filter-panel">
@@ -95,19 +115,48 @@ export function MarketOverview({
           <div className="charts-grid">
             <section className="panel chart-panel">
               <div className="chart-heading"><div><span className="chart-kicker">DAILY OHLCV</span><h2>Closing price</h2></div><span className="chart-current">{bars.length ? formatNumber(bars[bars.length - 1].close) : '—'}</span></div>
-              {analyticsLoading ? <div className="chart-empty">Loading daily bars…</div> : <Chart values={bars.map((bar) => bar.close)} label="daily" color="#3977ef" formatValue={formatNumber} />}
-              <div className="chart-footer"><span>{bars.length ? `${formatDate(bars[0].date)} – ${formatDate(bars[bars.length - 1].date)}` : 'No bars in this date range'}</span><span className="chart-legend"><i className="legend-blue" /> Close</span></div>
+              {analyticsLoading ? <div className="chart-empty">Loading daily bars…</div> : <Chart
+                values={bars.map((bar) => bar.close)}
+                label="daily"
+                color="#3977ef"
+                formatValue={formatNumber}
+                xAxisStart={bars[0] ? formatDate(bars[0].date) : undefined}
+                xAxisEnd={bars.length ? formatDate(bars[bars.length - 1].date) : undefined}
+              />}
+              <div className="chart-footer">
+                <span>{analyticsLoading ? 'Updating date range…' : dailyBarRange.start && dailyBarRange.end ? `Full dataset date range: ${formatDate(dailyBarRange.start)} – ${formatDate(dailyBarRange.end)}` : 'No bars in this date range'}</span>
+                <span>{analyticsLoading ? 'Updating chart coverage…' : chartCoverage(dailyBarCount, chartPointLimit)}</span>
+                <span className="chart-legend"><i className="legend-blue" /> Close</span>
+              </div>
             </section>
             <section className="panel chart-panel">
               <div className="chart-heading"><div><span className="chart-kicker">ROLLING 15-MINUTE</span><h2>VWAP</h2></div><span className="chart-current">{vwap.length ? formatNumber(vwap[vwap.length - 1].value) : '—'}</span></div>
-              {analyticsLoading ? <div className="chart-empty">Loading VWAP…</div> : <Chart values={vwap.map((point) => point.value)} label="vwap" color="#19a882" formatValue={formatNumber} />}
-              <div className="chart-footer"><span>{vwap.length ? `${formatTimestamp(vwap[0].timestamp)} – ${formatTimestamp(vwap[vwap.length - 1].timestamp)}` : 'No VWAP points in this date range'}</span><span className="chart-legend"><i className="legend-green" /> VWAP</span></div>
+              {analyticsLoading ? <div className="chart-empty">Loading VWAP…</div> : <Chart
+                values={vwap.map((point) => point.value)}
+                label="vwap"
+                color="#19a882"
+                formatValue={formatNumber}
+                xAxisStart={vwap[0] ? formatTimestamp(vwap[0].timestamp) : undefined}
+                xAxisEnd={vwap.length ? formatTimestamp(vwap[vwap.length - 1].timestamp) : undefined}
+              />}
+              <div className="chart-footer">
+                <span>{analyticsLoading ? 'Updating timestamp range…' : vwapRange.start && vwapRange.end ? `Full dataset timestamp range: ${formatTimestamp(vwapRange.start)} – ${formatTimestamp(vwapRange.end)}` : 'No VWAP points in this date range'}</span>
+                <span>{analyticsLoading ? 'Updating chart coverage…' : chartCoverage(vwapPointCount, chartPointLimit)}</span>
+                <span className="chart-legend"><i className="legend-green" /> VWAP</span>
+              </div>
             </section>
           </div>
 
           <section className="panel bars-panel">
-            <div className="panel-title-row"><div><h2>Daily bars</h2><p>Aggregated open, high, low, close, and volume by contract.</p></div><span className="table-count">{formatNumber(bars.length)} shown</span></div>
-            <DailyBarsTable bars={bars.slice(0, 8)} loading={analyticsLoading} />
+            <div className="panel-title-row"><div><h2>Daily bars</h2><p>Aggregated open, high, low, close, and volume by contract.</p></div><span className="table-count">{formatNumber(dailyBarCount)} rows</span></div>
+            <DailyBarsTable
+              bars={tableBars}
+              loading={dailyBarsLoading}
+              page={dailyBarPage}
+              pageCount={dailyBarPages}
+              totalRows={dailyBarCount}
+              onPageChange={onDailyBarPageChange}
+            />
           </section>
 
           <InsightsPanel title="Intelligent insights" description="Rule-based patterns and recommended actions for this dataset." insights={insights.slice(0, 3)} emptyMessage={selectedId ? 'No quality patterns to highlight. Your dataset is looking good.' : 'Import a dataset to generate insights.'} onViewQuality={onViewQuality} />
@@ -115,4 +164,11 @@ export function MarketOverview({
       )}
     </>
   )
+}
+
+function chartCoverage(totalPoints: number, limit: number): string {
+  const shownPoints = Math.min(totalPoints, limit)
+  return totalPoints > limit
+    ? `Showing ${formatNumber(shownPoints)} of ${formatNumber(totalPoints)} points (limit ${formatNumber(limit)})`
+    : `Showing all ${formatNumber(totalPoints)} points (limit ${formatNumber(limit)})`
 }

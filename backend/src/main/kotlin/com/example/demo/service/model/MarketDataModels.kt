@@ -49,6 +49,8 @@ data class AnalyticsPage<T>(
     val page: Int,
     val size: Int,
     val items: List<T>,
+    val rangeStart: String? = null,
+    val rangeEnd: String? = null,
 )
 
 data class Insight(

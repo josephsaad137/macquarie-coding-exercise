@@ -1,12 +1,11 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
+import com.example.demo.exception.ResourceNotFoundException
 import com.example.demo.service.model.DatasetFrequency
 import com.example.demo.service.model.Insight
 import java.util.UUID
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 
 @Service
 class InsightsService(
@@ -14,7 +13,7 @@ class InsightsService(
 ) {
     fun getInsights(datasetId: UUID): List<Insight> {
         val dataset = datasetRepository.findDataset(datasetId)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset $datasetId was not found")
+            ?: throw ResourceNotFoundException("Dataset $datasetId was not found")
         val issues = datasetRepository.findQualityIssues(datasetId)
         if (issues.isEmpty()) return emptyList()
 

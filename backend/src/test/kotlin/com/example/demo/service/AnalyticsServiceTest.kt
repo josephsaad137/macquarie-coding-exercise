@@ -1,6 +1,8 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
+import com.example.demo.exception.InvalidRequestException
+import com.example.demo.exception.ResourceNotFoundException
 import com.example.demo.service.model.DailyBar
 import java.util.UUID
 import java.time.LocalDate
@@ -9,8 +11,6 @@ import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 
 class AnalyticsServiceTest {
     @Test
@@ -178,35 +178,107 @@ class AnalyticsServiceTest {
     }
 
     @Test
+    fun `orders analytics chronologically across contracts for recent chart windows`() {
+        val (analytics, datasetId) = serviceWithData(
+            """
+                contract,timestamp,open,high,low,close,volume
+                ESH25,2025-01-03T09:30:00,100,102,99,101,10
+                ESM25,2025-01-01T09:30:00,200,202,199,201,10
+                ESH25,2025-01-02T09:30:00,101,103,100,102,10
+                ESM25,2025-01-02T09:30:00,201,203,200,202,10
+            """.trimIndent(),
+        )
+
+        val dailyBars = analytics.dailyBars(
+            datasetId, null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03"), page = 0, size = 10,
+        )
+        val vwapPoints = analytics.rollingVwap(
+            datasetId, null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-03"), page = 0, size = 10,
+        )
+
+        assertEquals(
+            listOf(
+                "2025-01-01:ESM25",
+                "2025-01-02:ESH25",
+                "2025-01-02:ESM25",
+                "2025-01-03:ESH25",
+            ),
+            dailyBars.items.map { "${it.date}:${it.contract}" },
+        )
+        assertEquals(
+            listOf(
+                "2025-01-01T09:30:ESM25",
+                "2025-01-02T09:30:ESH25",
+                "2025-01-02T09:30:ESM25",
+                "2025-01-03T09:30:ESH25",
+            ),
+            vwapPoints.items.map { "${it.timestamp}:${it.contract}" },
+        )
+    }
+
+    @Test
+    fun `returns full analytics ranges across contracts independently of the requested page`() {
+        val (analytics, datasetId) = serviceWithData(
+            """
+                contract,timestamp,open,high,low,close,volume
+                AAA,2025-01-03T09:30:00,100,102,99,101,10
+                BBB,2025-01-01T09:30:00,100,102,99,101,10
+            """.trimIndent(),
+        )
+
+        val dailyPage = analytics.dailyBars(
+            datasetId,
+            null,
+            LocalDate.parse("2025-01-01"),
+            LocalDate.parse("2025-01-03"),
+            page = 1,
+            size = 1,
+        )
+        val vwapPage = analytics.rollingVwap(
+            datasetId,
+            null,
+            LocalDate.parse("2025-01-01"),
+            LocalDate.parse("2025-01-03"),
+            page = 1,
+            size = 1,
+        )
+
+        assertEquals("2025-01-01", dailyPage.rangeStart)
+        assertEquals("2025-01-03", dailyPage.rangeEnd)
+        assertEquals("2025-01-01T09:30", vwapPage.rangeStart)
+        assertEquals("2025-01-03T09:30", vwapPage.rangeEnd)
+    }
+
+    @Test
     fun `rejects invalid analytics pagination`() {
         val (analytics, datasetId) = serviceWithData(
             "contract,timestamp,open,high,low,close,volume\nESH25,2025-01-02T09:30:00,100,102,99,101,10",
         )
 
-        val negativePage = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val negativePage = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             analytics.dailyBars(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), -1, 10)
         }
-        val excessiveSize = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val excessiveSize = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             analytics.rollingVwap(datasetId, null, LocalDate.parse("2025-01-02"), LocalDate.parse("2025-01-02"), 0, 501)
         }
 
-        assertEquals(HttpStatus.BAD_REQUEST, negativePage.statusCode)
-        assertEquals(HttpStatus.BAD_REQUEST, excessiveSize.statusCode)
+        assertTrue(negativePage.message!!.contains("Page"))
+        assertTrue(excessiveSize.message!!.contains("Size"))
     }
 
     @Test
     fun `rejects analytics requests for unknown datasets`() {
         val analytics = AnalyticsService(InMemoryDatasetRepository())
 
-        val dailyError = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val dailyError = org.junit.jupiter.api.assertThrows<ResourceNotFoundException> {
             analytics.dailyBars(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"), 0, 10)
         }
-        val vwapError = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val vwapError = org.junit.jupiter.api.assertThrows<ResourceNotFoundException> {
             analytics.rollingVwap(UUID.randomUUID(), null, LocalDate.parse("2025-01-01"), LocalDate.parse("2025-01-01"), 0, 10)
         }
 
-        assertEquals(HttpStatus.NOT_FOUND, dailyError.statusCode)
-        assertEquals(HttpStatus.NOT_FOUND, vwapError.statusCode)
+        assertTrue(dailyError.message!!.contains("was not found"))
+        assertTrue(vwapError.message!!.contains("was not found"))
     }
 
     private fun serviceWithData(csv: String): Pair<AnalyticsService, UUID> {

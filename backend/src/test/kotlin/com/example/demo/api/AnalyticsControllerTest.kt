@@ -28,7 +28,9 @@ class AnalyticsControllerTest {
 
     @BeforeEach
     fun setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(AnalyticsController(analyticsService)).build()
+        mockMvc = MockMvcBuilders.standaloneSetup(AnalyticsController(analyticsService))
+            .setControllerAdvice(ApiExceptionHandler())
+            .build()
     }
 
     @Test
@@ -47,6 +49,8 @@ class AnalyticsControllerTest {
                 totalElements = 1,
                 page = 0,
                 size = 100,
+                rangeStart = "2025-01-02",
+                rangeEnd = "2025-01-02",
                 items = listOf(
                 DailyBar(
                     contract = "ESH25",
@@ -71,7 +75,7 @@ class AnalyticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(
                 content().json(
-                    """{"totalElements":1,"page":0,"size":100,"items":[{"contract":"ESH25","date":"2025-01-02","open":100.0,"high":105.0,"low":98.0,"close":103.0,"volume":42}]}""",
+                    """{"totalElements":1,"page":0,"size":100,"rangeStart":"2025-01-02","rangeEnd":"2025-01-02","items":[{"contract":"ESH25","date":"2025-01-02","open":100.0,"high":105.0,"low":98.0,"close":103.0,"volume":42}]}""",
                 ),
             )
 
@@ -153,6 +157,8 @@ class AnalyticsControllerTest {
                 totalElements = 1,
                 page = 0,
                 size = 100,
+                rangeStart = "2025-01-02T09:45:00",
+                rangeEnd = "2025-01-02T09:45:00",
                 items = listOf(
                 RollingVwapPoint(
                     contract = "ESH25",
@@ -172,7 +178,7 @@ class AnalyticsControllerTest {
             .andExpect(status().isOk)
             .andExpect(
                 content().json(
-                    """{"totalElements":1,"page":0,"size":100,"items":[{"contract":"ESH25","timestamp":"2025-01-02T09:45:00","value":101.25}]}""",
+                    """{"totalElements":1,"page":0,"size":100,"rangeStart":"2025-01-02T09:45:00","rangeEnd":"2025-01-02T09:45:00","items":[{"contract":"ESH25","timestamp":"2025-01-02T09:45:00","value":101.25}]}""",
                 ),
             )
 

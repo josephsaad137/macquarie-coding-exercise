@@ -121,11 +121,14 @@ h1 { margin: 9px 0 5px; color: var(--ink); font: 700 29px/1.2 var(--heading); le
 .chart-kicker { color: #8c98ab; font: 8px var(--mono); letter-spacing: .6px; }
 .chart-heading h2 { margin-top: 4px; }
 .chart-current { color: #35445e; font: 600 15px var(--mono); }
-.chart-wrap { position: relative; height: 167px; margin-top: 12px; padding-left: 38px; }
+.chart-figure { min-width: 0; margin-top: 12px; }
+.chart-wrap { position: relative; height: 167px; padding-left: 38px; }
 .chart { width: 100%; height: 100%; overflow: visible; }
 .chart-grid { stroke: #edf1f6; stroke-width: 1; stroke-dasharray: 4 5; vector-effect: non-scaling-stroke; }
 .chart-range { position: absolute; inset: 9px auto 9px 0; display: flex; flex-direction: column; justify-content: space-between; color: #a3adbb; font: 8px var(--mono); }
-.chart-footer { display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; color: #99a4b4; font-size: 8px; }
+.chart-x-axis { display: flex; justify-content: space-between; gap: 8px; padding-left: 38px; color: #8996a9; font: 8px var(--mono); }
+.chart-x-axis span:last-child { text-align: right; }
+.chart-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; color: #99a4b4; font-size: 8px; }
 .chart-legend { display: flex; align-items: center; gap: 5px; color: #6d7b91; }
 .chart-legend i { width: 6px; height: 6px; border-radius: 50%; }
 .legend-blue { background: #3977ef; }

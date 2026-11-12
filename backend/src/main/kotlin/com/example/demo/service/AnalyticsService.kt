@@ -1,17 +1,16 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.DatasetRepository
+import com.example.demo.exception.InvalidRequestException
+import com.example.demo.exception.ResourceNotFoundException
 import com.example.demo.service.model.AnalyticsPage
 import com.example.demo.service.model.DailyBar
 import com.example.demo.service.model.MarketDataBar
 import com.example.demo.service.model.RollingVwapPoint
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.util.Locale
 import java.util.UUID
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 
 @Service
 class AnalyticsService(
@@ -48,8 +47,14 @@ class AnalyticsService(
                     volume = orderedBars.fold(0L) { total, bar -> Math.addExact(total, bar.volume) },
                 )
             }
-            .sortedWith(compareBy(DailyBar::contract, DailyBar::date))
-        return paginate(bars, page, size)
+            .sortedWith(compareBy(DailyBar::date, DailyBar::contract))
+        return paginate(
+            bars,
+            page,
+            size,
+            rangeStart = bars.minOfOrNull(DailyBar::date)?.toString(),
+            rangeEnd = bars.maxOfOrNull(DailyBar::date)?.toString(),
+        )
     }
 
     fun rollingVwap(
@@ -104,7 +109,14 @@ class AnalyticsService(
                 }
                 result
             }
-        return paginate(points, page, size)
+            .sortedWith(compareBy(RollingVwapPoint::timestamp, RollingVwapPoint::contract))
+        return paginate(
+            points,
+            page,
+            size,
+            rangeStart = points.minOfOrNull(RollingVwapPoint::timestamp)?.toString(),
+            rangeEnd = points.maxOfOrNull(RollingVwapPoint::timestamp)?.toString(),
+        )
     }
 
     private fun filteredBars(datasetId: UUID, contract: String?): List<MarketDataBar> {
@@ -116,20 +128,26 @@ class AnalyticsService(
 
     private fun requireDataset(datasetId: UUID) {
         if (datasetRepository.findDataset(datasetId) == null) {
-            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dataset $datasetId was not found")
+            throw ResourceNotFoundException("Dataset $datasetId was not found")
         }
     }
 
     private fun validatePagination(page: Int, size: Int) {
         if (page < 0) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be zero or greater")
+            throw InvalidRequestException("Page must be zero or greater")
         }
         if (size !in 1..MAX_PAGE_SIZE) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Size must be between 1 and $MAX_PAGE_SIZE")
+            throw InvalidRequestException("Size must be between 1 and $MAX_PAGE_SIZE")
         }
     }
 
-    private fun <T> paginate(items: List<T>, page: Int, size: Int): AnalyticsPage<T> {
+    private fun <T> paginate(
+        items: List<T>,
+        page: Int,
+        size: Int,
+        rangeStart: String? = null,
+        rangeEnd: String? = null,
+    ): AnalyticsPage<T> {
         val offset = page.toLong() * size
         val pageItems = if (offset >= items.size) emptyList() else items.drop(offset.toInt()).take(size)
         return AnalyticsPage(
@@ -137,6 +155,8 @@ class AnalyticsService(
             page = page,
             size = size,
             items = pageItems,
+            rangeStart = rangeStart,
+            rangeEnd = rangeEnd,
         )
     }
 

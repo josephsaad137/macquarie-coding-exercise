@@ -60,6 +60,8 @@ data class DailyBarsPageResponse(
     val totalElements: Long,
     val page: Int,
     val size: Int,
+    val rangeStart: String?,
+    val rangeEnd: String?,
     val items: List<DailyBarResponse>,
 )
 
@@ -67,6 +69,8 @@ data class RollingVwapPageResponse(
     val totalElements: Long,
     val page: Int,
     val size: Int,
+    val rangeStart: String?,
+    val rangeEnd: String?,
     val items: List<RollingVwapResponse>,
 )
 

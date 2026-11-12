@@ -1,12 +1,11 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
+import com.example.demo.exception.ResourceNotFoundException
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 
 class InsightsServiceTest {
     @Test
@@ -118,10 +117,10 @@ class InsightsServiceTest {
 
     @Test
     fun `rejects unknown dataset ids`() {
-        val error = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val error = org.junit.jupiter.api.assertThrows<ResourceNotFoundException> {
             InsightsService(InMemoryDatasetRepository()).getInsights(UUID.randomUUID())
         }
 
-        assertEquals(HttpStatus.NOT_FOUND, error.statusCode)
+        assertTrue(error.message!!.contains("was not found"))
     }
 }

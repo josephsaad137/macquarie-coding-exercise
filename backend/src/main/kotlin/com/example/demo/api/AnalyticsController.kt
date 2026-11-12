@@ -4,17 +4,16 @@ import com.example.demo.api.dto.DailyBarResponse
 import com.example.demo.api.dto.DailyBarsPageResponse
 import com.example.demo.api.dto.RollingVwapPageResponse
 import com.example.demo.api.dto.RollingVwapResponse
+import com.example.demo.exception.InvalidRequestException
 import com.example.demo.service.AnalyticsService
 import java.time.LocalDate
 import java.util.Locale
 import java.util.UUID
 import org.springframework.format.annotation.DateTimeFormat
-import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 
 @RestController
 @RequestMapping("/analytics")
@@ -42,6 +41,8 @@ class AnalyticsController(
             totalElements = result.totalElements,
             page = result.page,
             size = result.size,
+            rangeStart = result.rangeStart,
+            rangeEnd = result.rangeEnd,
             items = result.items.map { bar ->
                 DailyBarResponse(
                     contract = bar.contract,
@@ -73,6 +74,8 @@ class AnalyticsController(
             totalElements = result.totalElements,
             page = result.page,
             size = result.size,
+            rangeStart = result.rangeStart,
+            rangeEnd = result.rangeEnd,
             items = result.items.map { point ->
                 RollingVwapResponse(
                     contract = point.contract,
@@ -85,16 +88,16 @@ class AnalyticsController(
 
     private fun validateDateRange(from: LocalDate, to: LocalDate) {
         if (to.isBefore(from)) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "'to' must be on or after 'from'")
+            throw InvalidRequestException("'to' must be on or after 'from'")
         }
     }
 
     private fun validatePagination(page: Int, size: Int) {
         if (page < 0) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Page must be zero or greater")
+            throw InvalidRequestException("Page must be zero or greater")
         }
         if (size !in 1..MAX_PAGE_SIZE) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Size must be between 1 and $MAX_PAGE_SIZE")
+            throw InvalidRequestException("Size must be between 1 and $MAX_PAGE_SIZE")
         }
     }
 
@@ -102,7 +105,7 @@ class AnalyticsController(
         if (contract == null) return null
         val normalized = contract.trim()
         if (normalized.isEmpty()) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Contract must not be blank")
+            throw InvalidRequestException("Contract must not be blank")
         }
         return normalized.uppercase(Locale.ROOT)
     }

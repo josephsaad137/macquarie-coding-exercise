@@ -42,6 +42,7 @@ describe('App', () => {
     })
     vi.spyOn(api, 'insights').mockResolvedValue([])
     vi.spyOn(api, 'dailyBars').mockResolvedValue({ totalElements: 0, page: 0, size: 500, items: [] })
+    vi.spyOn(api, 'dailyBarsPage').mockResolvedValue({ totalElements: 0, page: 0, size: 10, items: [] })
     vi.spyOn(api, 'vwap').mockResolvedValue({ totalElements: 0, page: 0, size: 500, items: [] })
     vi.spyOn(api, 'importDataset').mockResolvedValue(importResult)
   })
@@ -62,6 +63,31 @@ describe('App', () => {
 
   it('loads dataset analytics and quality findings, and changes quality pages', async () => {
     vi.mocked(api.listDatasets).mockResolvedValue([firstDataset])
+    vi.mocked(api.dailyBars).mockResolvedValue({
+      totalElements: 501,
+      page: 0,
+      size: 500,
+      rangeStart: '2024-01-01',
+      rangeEnd: '2025-12-31',
+      items: [{
+        contract: 'ESH25',
+        date: '2025-01-02',
+        open: 100,
+        high: 105,
+        low: 98,
+        close: 103.25,
+        volume: 4200,
+      }],
+    })
+    vi.mocked(api.dailyBarsPage).mockResolvedValue({ totalElements: 501, page: 0, size: 10, items: [] })
+    vi.mocked(api.vwap).mockResolvedValue({
+      totalElements: 12345,
+      page: 0,
+      size: 500,
+      rangeStart: '2024-01-01T09:30:00',
+      rangeEnd: '2025-12-31T16:00:00',
+      items: [{ contract: 'ESH25', timestamp: '2025-01-02T09:30:00', value: 102.75 }],
+    })
     vi.mocked(api.quality).mockResolvedValue({
       datasetId: firstDataset.id,
       totalIssues: 21,
@@ -84,6 +110,11 @@ describe('App', () => {
       expect(api.dailyBars).toHaveBeenCalledWith(firstDataset.id, '', '', '')
       expect(api.vwap).toHaveBeenCalledWith(firstDataset.id, '', '', '')
     })
+    expect(await screen.findByText('501')).toBeInTheDocument()
+    expect(screen.getByText('12,345 VWAP points')).toBeInTheDocument()
+    expect(screen.getByText('Full dataset date range: Jan 1, 2024 – Dec 31, 2025')).toBeInTheDocument()
+    expect(screen.getByText('Full dataset timestamp range: 2024-01-01 09:30:00 – 2025-12-31 16:00:00')).toBeInTheDocument()
+    expect(screen.getByText('Showing 500 of 501 points (limit 500)')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'View quality report' }))
     expect(await screen.findByRole('heading', { name: 'Quality report' })).toBeInTheDocument()
     expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
@@ -91,6 +122,32 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next →' }))
     await waitFor(() => expect(api.quality).toHaveBeenLastCalledWith(firstDataset.id, 1))
     expect(screen.getByText('Showing 11–20 of 21')).toBeInTheDocument()
+  })
+
+  it('loads the next daily-bars table page from the full result set', async () => {
+    vi.mocked(api.listDatasets).mockResolvedValue([firstDataset])
+    vi.mocked(api.dailyBarsPage).mockImplementation(async (_datasetId, _contract, _from, _to, page) => ({
+      totalElements: 1001,
+      page,
+      size: 10,
+      items: Array.from({ length: 10 }, (_, index) => ({
+        contract: 'ESH25',
+        date: `2025-01-${String(page * 10 + index + 1).padStart(2, '0')}`,
+        open: 100,
+        high: 105,
+        low: 98,
+        close: 103.25,
+        volume: 4200,
+      })),
+    }))
+    render(<App />)
+
+    await screen.findByText('Showing 1–10 of 1,001')
+    fireEvent.click(screen.getByRole('button', { name: 'Next →' }))
+
+    await waitFor(() => {
+      expect(api.dailyBarsPage).toHaveBeenLastCalledWith(firstDataset.id, '', '', '', 1)
+    })
   })
 
   it('applies normalized filters and reloads analytics', async () => {

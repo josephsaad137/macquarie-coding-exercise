@@ -1,13 +1,13 @@
 package com.example.demo.service
 
 import com.example.demo.persistence.InMemoryDatasetRepository
+import com.example.demo.exception.InvalidRequestException
+import com.example.demo.exception.ResourceNotFoundException
 import java.time.LocalDateTime
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 
 class QualityServiceTest {
     @Test
@@ -100,11 +100,11 @@ class QualityServiceTest {
 
     @Test
     fun `rejects unknown dataset id`() {
-        val error = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val error = org.junit.jupiter.api.assertThrows<ResourceNotFoundException> {
             QualityService(InMemoryDatasetRepository()).getQuality(UUID.randomUUID(), page = 0, size = 25)
         }
 
-        assertEquals(HttpStatus.NOT_FOUND, error.statusCode)
+        assertTrue(error.message!!.contains("was not found"))
     }
 
     @Test
@@ -118,19 +118,19 @@ class QualityServiceTest {
         )
         val service = QualityService(repository)
 
-        val negativePage = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val negativePage = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.getQuality(imported.id, page = -1, size = 10)
         }
-        val invalidSize = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val invalidSize = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.getQuality(imported.id, page = 0, size = 0)
         }
-        val excessiveSize = org.junit.jupiter.api.assertThrows<ResponseStatusException> {
+        val excessiveSize = org.junit.jupiter.api.assertThrows<InvalidRequestException> {
             service.getQuality(imported.id, page = 0, size = 501)
         }
 
-        assertEquals(HttpStatus.BAD_REQUEST, negativePage.statusCode)
-        assertEquals(HttpStatus.BAD_REQUEST, invalidSize.statusCode)
-        assertEquals(HttpStatus.BAD_REQUEST, excessiveSize.statusCode)
+        assertTrue(negativePage.message!!.contains("Page"))
+        assertTrue(invalidSize.message!!.contains("Size"))
+        assertTrue(excessiveSize.message!!.contains("Size"))
     }
 
     @Test
